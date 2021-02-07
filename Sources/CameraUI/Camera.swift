@@ -111,6 +111,13 @@ public class Camera: NSObject, ObservableObject {
         boot()
     }
 
+    public init(captureMode: CaptureMode = .photo) {
+        super.init()
+        self.captureMode = captureMode
+        previewView.session = session
+        boot()
+    }
+
     private func boot() {
         switch AVCaptureDevice.authorizationStatus(for: .video) {
             case .authorized:
@@ -219,7 +226,6 @@ public class Camera: NSObject, ObservableObject {
         }
 
         session.beginConfiguration()
-        session.sessionPreset = .photo
 
         // Add video input.
         do {
@@ -282,9 +288,24 @@ public class Camera: NSObject, ObservableObject {
             print("Could not create audio device input: \(error)")
         }
 
-        // Add the photo output.
         if session.canAddOutput(photoOutput) {
             session.addOutput(photoOutput)
+
+            if captureMode == .movie {
+                let movieFileOutput: AVCaptureMovieFileOutput = AVCaptureMovieFileOutput()
+                if session.canAddOutput(movieFileOutput) {
+                    session.addOutput(movieFileOutput)
+                    session.sessionPreset = .high
+                    if let connection = movieFileOutput.connection(with: .video) {
+                        if connection.isVideoStabilizationSupported {
+                            connection.preferredVideoStabilizationMode = .auto
+                        }
+                    }
+                    self.movieFileOutput = movieFileOutput
+                }
+            } else {
+                session.sessionPreset = .photo
+            }
 
             photoOutput.isHighResolutionCaptureEnabled = true
             photoOutput.isLivePhotoCaptureEnabled = photoOutput.isLivePhotoCaptureSupported
@@ -299,7 +320,6 @@ public class Camera: NSObject, ObservableObject {
                 self.portraitEffectsMatteDeliveryMode = self.photoOutput.isPortraitEffectsMatteDeliverySupported ? .on : .off
                 self.photoQualityPrioritizationMode = .balanced
             }
-
         } else {
             print("Could not add photo output to the session")
             setupResult = .configurationFailed
@@ -587,95 +607,63 @@ extension Camera {
 }
 
 extension Camera {
+
+    func setPhotoMode() {
+        // Remove the AVCaptureMovieFileOutput from the session because it doesn't support capture of Live Photos.
+        self.session.beginConfiguration()
+        self.session.removeOutput(self.movieFileOutput!)
+        self.session.sessionPreset = .photo
+
+        self.movieFileOutput = nil
+
+        self.photoOutput.isLivePhotoCaptureEnabled = self.photoOutput.isLivePhotoCaptureSupported
+        self.photoOutput.isDepthDataDeliveryEnabled = self.photoOutput.isDepthDataDeliverySupported
+        self.photoOutput.isPortraitEffectsMatteDeliveryEnabled = self.photoOutput.isPortraitEffectsMatteDeliverySupported
+
+        if !self.photoOutput.availableSemanticSegmentationMatteTypes.isEmpty {
+            self.photoOutput.enabledSemanticSegmentationMatteTypes = self.photoOutput.availableSemanticSegmentationMatteTypes
+            self.selectedSemanticSegmentationMatteTypes = self.photoOutput.availableSemanticSegmentationMatteTypes
+        }
+
+        self.session.commitConfiguration()
+
+        DispatchQueue.main.async {
+            self.captureMode = .photo
+            self.livePhotoMode = self.photoOutput.isLivePhotoCaptureSupported ? .on : .off
+            self.depthDataDeliveryMode = self.photoOutput.isDepthDataDeliverySupported ? .on : .off
+            self.portraitEffectsMatteDeliveryMode = self.photoOutput.isPortraitEffectsMatteDeliverySupported ? .on : .off
+            self.photoQualityPrioritizationMode = .balanced
+        }
+    }
+
+    func setMovieMode() {
+        let movieFileOutput: AVCaptureMovieFileOutput = AVCaptureMovieFileOutput()
+        if self.session.canAddOutput(movieFileOutput) {
+            self.session.beginConfiguration()
+            self.session.addOutput(movieFileOutput)
+            self.session.sessionPreset = .high
+            if let connection = movieFileOutput.connection(with: .video) {
+                if connection.isVideoStabilizationSupported {
+                    connection.preferredVideoStabilizationMode = .auto
+                }
+            }
+            self.session.commitConfiguration()
+            self.movieFileOutput = movieFileOutput
+
+            DispatchQueue.main.async {
+                self.captureMode = .movie
+            }
+        }
+    }
+
     /// - Tag: EnableDisableModes
     public func changeCaptureMode(_ captureMode: CaptureMode) {
-
         if self.captureMode == captureMode { return }
-
-        switch captureMode {
-            case .photo:
-
-                sessionQueue.async {
-                    // Remove the AVCaptureMovieFileOutput from the session because it doesn't support capture of Live Photos.
-                    self.session.beginConfiguration()
-                    self.session.removeOutput(self.movieFileOutput!)
-                    self.session.sessionPreset = .photo
-
-                    self.movieFileOutput = nil
-
-                    if self.photoOutput.isLivePhotoCaptureSupported {
-                        self.photoOutput.isLivePhotoCaptureEnabled = true
-
-                        DispatchQueue.main.async {
-//                            self.livePhotoModeButton.isEnabled = true
-                        }
-                    }
-
-                    if self.photoOutput.isDepthDataDeliverySupported {
-                        self.photoOutput.isDepthDataDeliveryEnabled = true
-
-                        DispatchQueue.main.async {
-//                            self.depthDataDeliveryButton.isEnabled = true
-                        }
-                    }
-
-                    if self.photoOutput.isPortraitEffectsMatteDeliverySupported {
-                        self.photoOutput.isPortraitEffectsMatteDeliveryEnabled = true
-
-                        DispatchQueue.main.async {
-//                            self.portraitEffectsMatteDeliveryButton.isEnabled = true
-                        }
-                    }
-
-                    if !self.photoOutput.availableSemanticSegmentationMatteTypes.isEmpty {
-                        self.photoOutput.enabledSemanticSegmentationMatteTypes = self.photoOutput.availableSemanticSegmentationMatteTypes
-                        self.selectedSemanticSegmentationMatteTypes = self.photoOutput.availableSemanticSegmentationMatteTypes
-
-                        DispatchQueue.main.async {
-//                            self.semanticSegmentationMatteDeliveryButton.isEnabled = (self.depthDataDeliveryMode == .on) ? true : false
-                        }
-                    }
-
-                    DispatchQueue.main.async {
-                        self.captureMode = .photo
-    //                    self.livePhotoModeButton.isHidden = false
-    //                    self.depthDataDeliveryButton.isHidden = false
-    //                    self.portraitEffectsMatteDeliveryButton.isHidden = false
-    //                    self.semanticSegmentationMatteDeliveryButton.isHidden = false
-    //                    self.photoQualityPrioritizationSegControl.isHidden = false
-    //                    self.photoQualityPrioritizationSegControl.isEnabled = true
-                    }
-                    self.session.commitConfiguration()
-                }
-
-            case .movie:
-                sessionQueue.async {
-                    let movieFileOutput: AVCaptureMovieFileOutput = AVCaptureMovieFileOutput()
-                    if self.session.canAddOutput(movieFileOutput) {
-                        self.session.beginConfiguration()
-                        self.session.addOutput(movieFileOutput)
-                        self.session.sessionPreset = .high
-                        if let connection = movieFileOutput.connection(with: .video) {
-                            if connection.isVideoStabilizationSupported {
-                                connection.preferredVideoStabilizationMode = .auto
-                            }
-                        }
-                        self.session.commitConfiguration()
-                        self.movieFileOutput = movieFileOutput
-
-                        DispatchQueue.main.async {
-                            self.captureMode = .movie
-    //                        self.recordButton.isEnabled = true
-
-                            /*
-                             For photo captures during movie recording, Speed quality photo processing is prioritized
-                             to avoid frame drops during recording.
-                             */
-    //                        self.photoQualityPrioritizationSegControl.selectedSegmentIndex = 0
-    //                        self.photoQualityPrioritizationSegControl.sendActions(for: UIControl.Event.valueChanged)
-                        }
-                    }
-                }
+        sessionQueue.async {
+            switch captureMode {
+                case .photo: self.setPhotoMode()
+                case .movie: self.setMovieMode()
+            }
         }
     }
 

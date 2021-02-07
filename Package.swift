@@ -13,21 +13,18 @@ let package = Package(
             targets: ["CameraUI"]),
     ],
     dependencies: [
-//        .package(name: "Camera-SwiftUI", url: "git@github.com:rorodriguez116/Camera-SwiftUI.git", .upToNextMajor(from: "0.0.5"))
+
     ],
     targets: [
         // Targets are the basic building blocks of a package. A target can define a module or a test suite.
         // Targets can depend on other targets in this package, and on products in packages this package depends on.
         .target(
             name: "CameraUI",
-            dependencies: [
-//                "Camera-SwiftUI"
-            ]),
+            dependencies: []),
         .testTarget(
             name: "CameraUITests",
             dependencies: [
-                "CameraUI",
-//                "Camera-SwiftUI"
+                "CameraUI"
             ]),
     ]
 )

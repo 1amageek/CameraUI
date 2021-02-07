@@ -10,7 +10,7 @@ import CameraUI
 
 struct ContentView: View {
 
-    @ObservedObject var camera: Camera = Camera()
+    @ObservedObject var camera: Camera = Camera(captureMode: .movie)
 
     @GestureState var isDetectingTap = false
 
@@ -44,6 +44,7 @@ struct ContentView: View {
         ZStack {
             Color.black
             camera.view()
+                .background(Color.red)
             VStack {
                 Spacer()
                 HStack {

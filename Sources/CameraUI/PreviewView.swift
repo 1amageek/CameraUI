@@ -22,8 +22,7 @@ extension Camera.PreviewView: UIViewRepresentable {
 
 extension Camera {
 
-    public func view(_ captureMode: CaptureMode = .movie) -> some View {
-        self.changeCaptureMode(captureMode)
+    public func view() -> some View {
         return self.previewView
             .onAppear { self.onAppear() }
             .onDisappear { self.onDisappear() }
