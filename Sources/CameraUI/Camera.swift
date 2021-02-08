@@ -13,7 +13,9 @@ import Photos
 public class Camera: NSObject, ObservableObject {
 
     public enum CaptureMode: Equatable {
+
         case photo(Configuration)
+
         case movie(Configuration)
 
         var configuration: Configuration {
@@ -32,8 +34,11 @@ public class Camera: NSObject, ObservableObject {
             }
 
             public static var photo: Configuration { Configuration(sessionPreset: .photo) }
+
             public static var high: Configuration { Configuration(sessionPreset: .high) }
+
             public static var medium: Configuration { Configuration(sessionPreset: .medium) }
+
             public static var low: Configuration { Configuration(sessionPreset: .low) }
         }
 
@@ -47,7 +52,9 @@ public class Camera: NSObject, ObservableObject {
     }
 
     public enum VideoDevice {
+
         case back(_: AVCaptureDevice.DeviceType? = nil)
+        
         case front(_: AVCaptureDevice.DeviceType? = nil)
 
         var position: AVCaptureDevice.Position {
@@ -733,13 +740,12 @@ extension Camera {
         sessionQueue.async {
             let device: AVCaptureDevice = self.videoDeviceInput.device
             if device.isVirtualDevice {
-                print("SSSSS")
+                print("is Virtual Device")
             } else {
                 let factor: CGFloat = device.minAvailableVideoZoomFactor + zoomRatio * (device.maxAvailableVideoZoomFactor - device.minAvailableVideoZoomFactor)
-                print(device.minAvailableVideoZoomFactor, device.maxAvailableVideoZoomFactor)
                 do {
                     try device.lockForConfiguration()
-                    device.ramp(toVideoZoomFactor: factor, withRate: 30.0)
+                    device.ramp(toVideoZoomFactor: factor, withRate: 20.0)
                     device.unlockForConfiguration()
                 } catch {
                     print("Could not change ramp: \(self.videoDeviceInput.device)")

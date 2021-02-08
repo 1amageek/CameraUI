@@ -27,20 +27,20 @@ struct ContentView: View {
                     LongPressGesture()
                     .onEnded { value in
                         print("LongPressGesture onEnded", value)
-//                        camera.movieStartRecording()
+                        camera.movieStartRecording()
                     }
             )
             .simultaneously(
                 with:
                     DragGesture(minimumDistance: 0)
                     .onChanged { value in
-                        let zoom = abs(value.location.y - value.startLocation.y) / 200
+                        let zoom = max(value.startLocation.y - value.location.y, 0) / 350
                         print("DragGesture onChanged", zoom)
                         camera.changeRamp(zoomRatio: zoom)
                     }
                     .onEnded { value in
                         print("DragGesture onEnded", isDetectingLongPress, value)
-//                        camera.movieStopRecording()
+                        camera.movieStopRecording()
                     }
             )
     }
@@ -86,7 +86,7 @@ struct ContentView: View {
                         if case .front(_) = camera.videoDevice {
                             camera.change(videoDevice: .back())
                         } else {
-                            camera.change(videoDevice: .front(.builtInWideAngleCamera))
+                            camera.change(videoDevice: .front())
                         }
                     }) {
                         Image(systemName: "arrow.triangle.2.circlepath.camera")
@@ -97,7 +97,6 @@ struct ContentView: View {
                 .accentColor(.white)
             }.padding()
         }
-        .padding(.bottom, 88)
     }
 }
 
