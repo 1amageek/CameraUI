@@ -12,9 +12,38 @@ import Photos
 
 public class Camera: NSObject, ObservableObject {
 
-    public enum CaptureMode {
-        case photo
-        case movie
+    public enum CaptureMode: Equatable {
+        case photo(Configuration)
+        case movie(Configuration)
+
+        var configuration: Configuration {
+            switch self {
+                case .photo(let configuration): return configuration
+                case .movie(let configuration): return configuration
+            }
+        }
+
+        public struct Configuration: Equatable {
+
+            public var sessionPreset: AVCaptureSession.Preset
+
+            public init(sessionPreset: AVCaptureSession.Preset) {
+                self.sessionPreset = sessionPreset
+            }
+
+            public static var photo: Configuration { Configuration(sessionPreset: .photo) }
+            public static var high: Configuration { Configuration(sessionPreset: .high) }
+            public static var medium: Configuration { Configuration(sessionPreset: .medium) }
+            public static var low: Configuration { Configuration(sessionPreset: .low) }
+        }
+
+        public static func == (lhs: Camera.CaptureMode, rhs: Camera.CaptureMode) -> Bool {
+            switch (lhs, rhs) {
+                case (.photo(let c0), .photo(let c1)): return c0 == c1
+                case (.movie(let c0), .movie(let c1)): return c0 == c1
+                default: return false
+            }
+        }
     }
 
     public enum LivePhotoMode {
@@ -65,7 +94,7 @@ public class Camera: NSObject, ObservableObject {
 
     @Published public private(set) var isEnabled: Bool = false
 
-    @Published public private(set) var captureMode: CaptureMode = .photo
+    @Published public private(set) var captureMode: CaptureMode = .photo(.photo)
 
     @Published public var flashMode: AVCaptureDevice.FlashMode = .auto
 
@@ -111,7 +140,7 @@ public class Camera: NSObject, ObservableObject {
         boot()
     }
 
-    public init(captureMode: CaptureMode = .photo) {
+    public init(captureMode: CaptureMode = .photo(.photo)) {
         super.init()
         self.captureMode = captureMode
         previewView.session = session
@@ -291,11 +320,11 @@ public class Camera: NSObject, ObservableObject {
         if session.canAddOutput(photoOutput) {
             session.addOutput(photoOutput)
 
-            if captureMode == .movie {
+            if case .movie(let configuration) = captureMode {
                 let movieFileOutput: AVCaptureMovieFileOutput = AVCaptureMovieFileOutput()
                 if session.canAddOutput(movieFileOutput) {
                     session.addOutput(movieFileOutput)
-                    session.sessionPreset = .high
+                    session.sessionPreset = configuration.sessionPreset
                     if let connection = movieFileOutput.connection(with: .video) {
                         if connection.isVideoStabilizationSupported {
                             connection.preferredVideoStabilizationMode = .auto
@@ -303,8 +332,10 @@ public class Camera: NSObject, ObservableObject {
                     }
                     self.movieFileOutput = movieFileOutput
                 }
-            } else {
-                session.sessionPreset = .photo
+            }
+
+            if case .photo(let configuration) = captureMode {
+                session.sessionPreset = configuration.sessionPreset
             }
 
             photoOutput.isHighResolutionCaptureEnabled = true
@@ -456,12 +487,15 @@ public class Camera: NSObject, ObservableObject {
     }
 
     private func removeObservers() {
+        if let observer = orientationDidChangeObserver { NotificationCenter.default.removeObserver(observer) }
+        if let observer = AVCaptureDeviceSubjectAreaDidChangeObserver { NotificationCenter.default.removeObserver(observer) }
+        if let observer = AVCaptureSessionRuntimeErrorObserver { NotificationCenter.default.removeObserver(observer) }
+        if let observer = AVCaptureSessionWasInterruptedObserver { NotificationCenter.default.removeObserver(observer) }
+        if let observer = AVCaptureSessionInterruptionEndedObserver { NotificationCenter.default.removeObserver(observer) }
         NotificationCenter.default.removeObserver(self)
-
         for keyValueObservation in keyValueObservations {
             keyValueObservation.invalidate()
         }
-        keyValueObservations.removeAll()
     }
 
     func subjectAreaDidChange(notification: NSNotification) {
@@ -542,11 +576,11 @@ extension Camera {
                 preferredPosition = .back
                 preferredDeviceType = .builtInDualCamera
             }
-            let devices = self.videoDeviceDiscoverySession.devices
+            let devices: [AVCaptureDevice] = self.videoDeviceDiscoverySession.devices
             var newVideoDevice: AVCaptureDevice? = nil
 
             // First, seek a device with both the preferred position and device type. Otherwise, seek a device with only the preferred position.
-            if let device = devices.first(where: { $0.position == preferredPosition && $0.deviceType == preferredDeviceType }) {
+            if let device: AVCaptureDevice = devices.first(where: { $0.position == preferredPosition && $0.deviceType == preferredDeviceType }) {
                 newVideoDevice = device
             } else if let device = devices.first(where: { $0.position == preferredPosition }) {
                 newVideoDevice = device
@@ -608,61 +642,57 @@ extension Camera {
 
 extension Camera {
 
-    func setPhotoMode() {
-        // Remove the AVCaptureMovieFileOutput from the session because it doesn't support capture of Live Photos.
-        self.session.beginConfiguration()
-        self.session.removeOutput(self.movieFileOutput!)
-        self.session.sessionPreset = .photo
-
-        self.movieFileOutput = nil
-
-        self.photoOutput.isLivePhotoCaptureEnabled = self.photoOutput.isLivePhotoCaptureSupported
-        self.photoOutput.isDepthDataDeliveryEnabled = self.photoOutput.isDepthDataDeliverySupported
-        self.photoOutput.isPortraitEffectsMatteDeliveryEnabled = self.photoOutput.isPortraitEffectsMatteDeliverySupported
-
-        if !self.photoOutput.availableSemanticSegmentationMatteTypes.isEmpty {
-            self.photoOutput.enabledSemanticSegmentationMatteTypes = self.photoOutput.availableSemanticSegmentationMatteTypes
-            self.selectedSemanticSegmentationMatteTypes = self.photoOutput.availableSemanticSegmentationMatteTypes
-        }
-
-        self.session.commitConfiguration()
-
-        DispatchQueue.main.async {
-            self.captureMode = .photo
-            self.livePhotoMode = self.photoOutput.isLivePhotoCaptureSupported ? .on : .off
-            self.depthDataDeliveryMode = self.photoOutput.isDepthDataDeliverySupported ? .on : .off
-            self.portraitEffectsMatteDeliveryMode = self.photoOutput.isPortraitEffectsMatteDeliverySupported ? .on : .off
-            self.photoQualityPrioritizationMode = .balanced
-        }
-    }
-
-    func setMovieMode() {
-        let movieFileOutput: AVCaptureMovieFileOutput = AVCaptureMovieFileOutput()
-        if self.session.canAddOutput(movieFileOutput) {
-            self.session.beginConfiguration()
-            self.session.addOutput(movieFileOutput)
-            self.session.sessionPreset = .high
-            if let connection = movieFileOutput.connection(with: .video) {
-                if connection.isVideoStabilizationSupported {
-                    connection.preferredVideoStabilizationMode = .auto
-                }
-            }
-            self.session.commitConfiguration()
-            self.movieFileOutput = movieFileOutput
-
-            DispatchQueue.main.async {
-                self.captureMode = .movie
-            }
-        }
-    }
-
     /// - Tag: EnableDisableModes
     public func changeCaptureMode(_ captureMode: CaptureMode) {
+
         if self.captureMode == captureMode { return }
+
         sessionQueue.async {
             switch captureMode {
-                case .photo: self.setPhotoMode()
-                case .movie: self.setMovieMode()
+                case .photo(let configuration):
+                    // Remove the AVCaptureMovieFileOutput from the session because it doesn't support capture of Live Photos.
+                    self.session.beginConfiguration()
+                    self.session.removeOutput(self.movieFileOutput!)
+                    self.session.sessionPreset = configuration.sessionPreset
+
+                    self.movieFileOutput = nil
+
+                    self.photoOutput.isLivePhotoCaptureEnabled = self.photoOutput.isLivePhotoCaptureSupported
+                    self.photoOutput.isDepthDataDeliveryEnabled = self.photoOutput.isDepthDataDeliverySupported
+                    self.photoOutput.isPortraitEffectsMatteDeliveryEnabled = self.photoOutput.isPortraitEffectsMatteDeliverySupported
+
+                    if !self.photoOutput.availableSemanticSegmentationMatteTypes.isEmpty {
+                        self.photoOutput.enabledSemanticSegmentationMatteTypes = self.photoOutput.availableSemanticSegmentationMatteTypes
+                        self.selectedSemanticSegmentationMatteTypes = self.photoOutput.availableSemanticSegmentationMatteTypes
+                    }
+
+                    self.session.commitConfiguration()
+
+                    DispatchQueue.main.async {
+                        self.captureMode = captureMode
+                        self.livePhotoMode = self.photoOutput.isLivePhotoCaptureSupported ? .on : .off
+                        self.depthDataDeliveryMode = self.photoOutput.isDepthDataDeliverySupported ? .on : .off
+                        self.portraitEffectsMatteDeliveryMode = self.photoOutput.isPortraitEffectsMatteDeliverySupported ? .on : .off
+                        self.photoQualityPrioritizationMode = .balanced
+                    }
+                case .movie(let configuration):
+                    let movieFileOutput: AVCaptureMovieFileOutput = AVCaptureMovieFileOutput()
+                    if self.session.canAddOutput(movieFileOutput) {
+                        self.session.beginConfiguration()
+                        self.session.addOutput(movieFileOutput)
+                        self.session.sessionPreset = configuration.sessionPreset
+                        if let connection = movieFileOutput.connection(with: .video) {
+                            if connection.isVideoStabilizationSupported {
+                                connection.preferredVideoStabilizationMode = .auto
+                            }
+                        }
+                        self.session.commitConfiguration()
+                        self.movieFileOutput = movieFileOutput
+
+                        DispatchQueue.main.async {
+                            self.captureMode = captureMode
+                        }
+                    }
             }
         }
     }
@@ -687,6 +717,26 @@ extension Camera {
         self.photoQualityPrioritizationMode = photoQualityPrioritizationMode
     }
 
+    public func changeRamp(zoomRatio: CGFloat) {
+        let zoomRatio = min(max(zoomRatio, 0), 1)
+
+        sessionQueue.async {
+            let device: AVCaptureDevice = self.videoDeviceInput.device
+            if device.isVirtualDevice {
+                print("SSSSS")
+            } else {
+                let factor: CGFloat = device.minAvailableVideoZoomFactor + zoomRatio * (device.maxAvailableVideoZoomFactor - device.minAvailableVideoZoomFactor)
+                print(device.minAvailableVideoZoomFactor, device.maxAvailableVideoZoomFactor)
+                do {
+                    try device.lockForConfiguration()
+                    device.ramp(toVideoZoomFactor: factor, withRate: 30.0)
+                    device.unlockForConfiguration()
+                } catch {
+                    print("Could not change ramp: \(self.videoDeviceInput.device)")
+                }
+            }
+        }
+    }
 }
 
 extension Camera {
@@ -915,11 +965,26 @@ extension Camera: AVCaptureFileOutputRecordingDelegate {
 extension Camera {
     final class PreviewView: UIView {
 
+        override class var layerClass: AnyClass {
+            return AVCaptureVideoPreviewLayer.self
+        }
+
         var videoPreviewLayer: AVCaptureVideoPreviewLayer {
             guard let layer = layer as? AVCaptureVideoPreviewLayer else {
                 fatalError("Expected `AVCaptureVideoPreviewLayer` type for layer. Check PreviewView.layerClass implementation.")
             }
             return layer
+        }
+
+        var videoGravity: AVLayerVideoGravity {
+            get {
+                return videoPreviewLayer.videoGravity
+            }
+            set {
+                if videoPreviewLayer.videoGravity != newValue {
+                    videoPreviewLayer.videoGravity = newValue
+                }
+            }
         }
 
         var session: AVCaptureSession? {
@@ -931,8 +996,9 @@ extension Camera {
             }
         }
 
-        override class var layerClass: AnyClass {
-            return AVCaptureVideoPreviewLayer.self
+        override func layoutSublayers(of layer: CALayer) {
+            super.layoutSublayers(of: layer)
+            print(layer.bounds, self.bounds)
         }
     }
 }
@@ -961,13 +1027,10 @@ extension AVCaptureVideoOrientation {
 
 extension AVCaptureDevice.DiscoverySession {
     var uniqueDevicePositionsCount: Int {
-
-        var uniqueDevicePositions = [AVCaptureDevice.Position]()
-
+        var uniqueDevicePositions: [AVCaptureDevice.Position] = []
         for device in devices where !uniqueDevicePositions.contains(device.position) {
             uniqueDevicePositions.append(device.position)
         }
-
         return uniqueDevicePositions.count
     }
 }

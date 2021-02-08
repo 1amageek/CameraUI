@@ -10,7 +10,7 @@ import CameraUI
 
 struct ContentView: View {
 
-    @ObservedObject var camera: Camera = Camera(captureMode: .movie)
+    @ObservedObject var camera: Camera = Camera(captureMode: .movie(.high))
 
     @GestureState var isDetectingTap = false
 
@@ -27,38 +27,49 @@ struct ContentView: View {
                     LongPressGesture()
                     .onEnded { value in
                         print("LongPressGesture onEnded", value)
-                        camera.movieStartRecording()
+//                        camera.movieStartRecording()
                     }
             )
             .simultaneously(
                 with:
                     DragGesture(minimumDistance: 0)
+                    .onChanged { value in
+                        let zoom = abs(value.location.y - value.startLocation.y) / 200
+                        print("DragGesture onChanged", zoom)
+                        camera.changeRamp(zoomRatio: zoom)
+                    }
                     .onEnded { value in
                         print("DragGesture onEnded", isDetectingLongPress, value)
-                        camera.movieStopRecording()
+//                        camera.movieStopRecording()
                     }
             )
     }
 
     var body: some View {
         ZStack {
-            Color.black
             camera.view()
                 .background(Color.red)
             VStack {
                 Spacer()
                 HStack {
                     Button(action: {
-                        if camera.captureMode == .photo {
-                            camera.changeCaptureMode(.movie)
+                        if case .photo(_) = camera.captureMode {
+                            camera.changeCaptureMode(.movie(.high))
                         } else {
-                            camera.changeCaptureMode(.photo)
+                            camera.changeCaptureMode(.photo(.photo))
                         }
                     }) {
-                        Image(systemName: camera.captureMode == .photo ? "video.fill" : "camera.fill")
-                            .font(.system(size: 26))
+                        Group {
+                            if case .photo(_) = camera.captureMode {
+                                Image(systemName: "video.fill")
+
+                            } else {
+                                Image(systemName: "camera.fill")
+                            }
+                        }
+                        .font(.system(size: 26))
+                        .disabled(camera.isCameraChanging)
                     }
-                    .disabled(camera.isCameraChanging)
                     Spacer()
                     ZStack {
                         Circle()
@@ -82,6 +93,7 @@ struct ContentView: View {
                 .accentColor(.white)
             }.padding()
         }
+        .padding(.bottom, 88)
     }
 }
 

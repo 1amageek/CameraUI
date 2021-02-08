@@ -15,14 +15,13 @@ extension Camera.PreviewView: UIViewRepresentable {
         return self
     }
 
-    public func updateUIView(_ uiView: Camera.PreviewView, context: Context) {
-
-    }
+    public func updateUIView(_ uiView: Camera.PreviewView, context: Context) { }
 }
 
 extension Camera {
 
-    public func view() -> some View {
+    public func view(_ videoGravity: AVLayerVideoGravity = .resizeAspect) -> some View {
+        self.previewView.videoGravity = videoGravity
         return self.previewView
             .onAppear { self.onAppear() }
             .onDisappear { self.onDisappear() }
