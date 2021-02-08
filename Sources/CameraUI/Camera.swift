@@ -46,6 +46,25 @@ public class Camera: NSObject, ObservableObject {
         }
     }
 
+    public enum VideoDevice {
+        case back(_: AVCaptureDevice.DeviceType? = nil)
+        case front(_: AVCaptureDevice.DeviceType? = nil)
+
+        var position: AVCaptureDevice.Position {
+            switch self {
+                case .back(_): return .back
+                case .front(_): return .front
+            }
+        }
+
+        var deviceType: AVCaptureDevice.DeviceType? {
+            switch self {
+                case .back(let deviceType): return deviceType
+                case .front(let deviceType): return deviceType
+            }
+        }
+    }
+
     public enum LivePhotoMode {
         case on
         case off
@@ -82,19 +101,15 @@ public class Camera: NSObject, ObservableObject {
 
     // MARK: Device Configuration
 
-    private let videoDeviceDiscoverySession = AVCaptureDevice
-        .DiscoverySession(deviceTypes: [
-            .builtInWideAngleCamera,
-            .builtInDualCamera,
-            .builtInTrueDepthCamera
-        ],
-        mediaType: .video, position: .unspecified)
+    private var videoDeviceDiscoverySession: AVCaptureDevice.DiscoverySession!
 
     // MARK: Mode
 
     @Published public private(set) var isEnabled: Bool = false
 
     @Published public private(set) var captureMode: CaptureMode = .photo(.photo)
+
+    @Published public private(set) var videoDevice: VideoDevice = .back(.builtInWideAngleCamera)
 
     @Published public var flashMode: AVCaptureDevice.FlashMode = .auto
 
@@ -134,17 +149,25 @@ public class Camera: NSObject, ObservableObject {
 
     private var backgroundRecordingID: UIBackgroundTaskIdentifier?
 
-    public override init() {
+    override private init() {
         super.init()
-        previewView.session = session
-        boot()
     }
 
-    public init(captureMode: CaptureMode = .photo(.photo)) {
-        super.init()
+    public convenience init(captureMode: CaptureMode = .photo(.photo),
+                            videoDevice: VideoDevice = .back(.builtInWideAngleCamera),
+                            useDeviceTypes: [AVCaptureDevice.DeviceType] = [
+                                .builtInWideAngleCamera,
+                                .builtInDualCamera,
+                                .builtInTrueDepthCamera
+                            ]) {
+        self.init()
         self.captureMode = captureMode
-        previewView.session = session
-        boot()
+        self.videoDevice = videoDevice
+        self.videoDeviceDiscoverySession = AVCaptureDevice.DiscoverySession(deviceTypes: useDeviceTypes,
+                                                                            mediaType: .video,
+                                                                            position: .unspecified)
+        self.previewView.session = session
+        self.boot()
     }
 
     private func boot() {
@@ -262,7 +285,10 @@ public class Camera: NSObject, ObservableObject {
 
             // Choose the back dual camera, if available, otherwise default to a wide angle camera.
 
-            if let dualCameraDevice: AVCaptureDevice = AVCaptureDevice.default(.builtInDualCamera, for: .video, position: .back) {
+            if let deviceType: AVCaptureDevice.DeviceType = videoDevice.deviceType,
+               let defaultDevice: AVCaptureDevice = AVCaptureDevice.default(deviceType, for: .video, position: videoDevice.position) {
+                defaultVideoDevice = defaultDevice
+            } else if let dualCameraDevice: AVCaptureDevice = AVCaptureDevice.default(.builtInDualCamera, for: .video, position: .back) {
                 defaultVideoDevice = dualCameraDevice
             } else if let backCameraDevice: AVCaptureDevice = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) {
                 // If a rear dual camera is not available, default to the rear wide angle camera.
@@ -552,35 +578,18 @@ public class Camera: NSObject, ObservableObject {
 
 extension Camera {
 
-    /// - Tag: ChangeCamera
-    public func changeCamera() {
+    public func change(videoDevice: VideoDevice) {
         self.isCameraChanging = true
         sessionQueue.async {
-            let currentVideoDevice: AVCaptureDevice = self.videoDeviceInput.device
-            let currentPosition: AVCaptureDevice.Position = currentVideoDevice.position
 
-            let preferredPosition: AVCaptureDevice.Position
-            let preferredDeviceType: AVCaptureDevice.DeviceType
+            let preferredPosition: AVCaptureDevice.Position = videoDevice.position
 
-            switch currentPosition {
-            case .unspecified, .front:
-                preferredPosition = .back
-                preferredDeviceType = .builtInDualCamera
-
-            case .back:
-                preferredPosition = .front
-                preferredDeviceType = .builtInTrueDepthCamera
-
-            @unknown default:
-                print("Unknown capture position. Defaulting to back, dual-camera.")
-                preferredPosition = .back
-                preferredDeviceType = .builtInDualCamera
-            }
             let devices: [AVCaptureDevice] = self.videoDeviceDiscoverySession.devices
             var newVideoDevice: AVCaptureDevice? = nil
 
             // First, seek a device with both the preferred position and device type. Otherwise, seek a device with only the preferred position.
-            if let device: AVCaptureDevice = devices.first(where: { $0.position == preferredPosition && $0.deviceType == preferredDeviceType }) {
+            if let preferredDeviceType: AVCaptureDevice.DeviceType = videoDevice.deviceType,
+               let device: AVCaptureDevice = devices.first(where: { $0.position == preferredPosition && $0.deviceType == preferredDeviceType }) {
                 newVideoDevice = device
             } else if let device = devices.first(where: { $0.position == preferredPosition }) {
                 newVideoDevice = device
@@ -634,6 +643,7 @@ extension Camera {
             }
 
             DispatchQueue.main.async {
+                self.videoDevice = videoDevice
                 self.isCameraChanging = false
             }
         }
@@ -998,7 +1008,6 @@ extension Camera {
 
         override func layoutSublayers(of layer: CALayer) {
             super.layoutSublayers(of: layer)
-            print(layer.bounds, self.bounds)
         }
     }
 }

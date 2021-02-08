@@ -83,7 +83,11 @@ struct ContentView: View {
                     }
                     Spacer()
                     Button(action: {
-                        camera.changeCamera()
+                        if case .front(_) = camera.videoDevice {
+                            camera.change(videoDevice: .back())
+                        } else {
+                            camera.change(videoDevice: .front(.builtInWideAngleCamera))
+                        }
                     }) {
                         Image(systemName: "arrow.triangle.2.circlepath.camera")
                             .font(.system(size: 26))
