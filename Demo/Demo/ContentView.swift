@@ -12,8 +12,6 @@ struct ContentView: View {
 
     @ObservedObject var camera: Camera = Camera(captureMode: .movie(.high))
 
-    @GestureState var isDetectingTap = false
-
     @GestureState var isDetectingLongPress = false
 
     var gesture: some Gesture {
@@ -45,18 +43,27 @@ struct ContentView: View {
             )
     }
 
+    var focus: some Gesture {
+        DragGesture(minimumDistance: 0)
+        .onEnded { value in
+            print("DragGesture onEnded", isDetectingLongPress, value)
+            camera.focusAndExposeTap(value.location)
+        }
+    }
+
     var body: some View {
         ZStack {
             camera.view()
                 .background(Color.red)
+                .gesture(focus)
             VStack {
                 Spacer()
                 HStack {
                     Button(action: {
                         if case .photo(_) = camera.captureMode {
-                            camera.changeCaptureMode(.movie(.high))
+                            camera.change(captureMode: .movie(.high))
                         } else {
-                            camera.changeCaptureMode(.photo(.photo))
+                            camera.change(captureMode: .photo(.photo))
                         }
                     }) {
                         Group {
@@ -84,9 +91,9 @@ struct ContentView: View {
                     Spacer()
                     Button(action: {
                         if case .front(_) = camera.videoDevice {
-                            camera.change(videoDevice: .back())
+                            camera.change(captureVideoDevice: .back())
                         } else {
-                            camera.change(videoDevice: .front())
+                            camera.change(captureVideoDevice: .front())
                         }
                     }) {
                         Image(systemName: "arrow.triangle.2.circlepath.camera")

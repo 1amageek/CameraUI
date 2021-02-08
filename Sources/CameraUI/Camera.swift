@@ -53,9 +53,9 @@ public class Camera: NSObject, ObservableObject {
 
     public enum VideoDevice {
 
-        case back(_: AVCaptureDevice.DeviceType? = nil)
+        case back(Configuration? = nil)
         
-        case front(_: AVCaptureDevice.DeviceType? = nil)
+        case front(Configuration? = nil)
 
         var position: AVCaptureDevice.Position {
             switch self {
@@ -66,9 +66,34 @@ public class Camera: NSObject, ObservableObject {
 
         var deviceType: AVCaptureDevice.DeviceType? {
             switch self {
-                case .back(let deviceType): return deviceType
-                case .front(let deviceType): return deviceType
+                case .back(let configuration): return configuration?.deviceType
+                case .front(let configuration): return configuration?.deviceType
             }
+        }
+
+        var videoStabilizationMode: AVCaptureVideoStabilizationMode {
+            switch self {
+                case .back(let configuration): return configuration?.videoStabilizationMode ?? .auto
+                case .front(let configuration): return configuration?.videoStabilizationMode ?? .auto
+            }
+        }
+
+        public struct Configuration {
+
+            public var deviceType: AVCaptureDevice.DeviceType?
+
+            public var videoStabilizationMode: AVCaptureVideoStabilizationMode
+
+            public init(deviceType: AVCaptureDevice.DeviceType?, videoStabilizationMode: AVCaptureVideoStabilizationMode = .auto) {
+                self.deviceType = deviceType
+                self.videoStabilizationMode = videoStabilizationMode
+            }
+
+            public static var builtInWideAngleCamera: Configuration { Configuration(deviceType: .builtInWideAngleCamera) }
+
+            public static var builtInDualCamera: Configuration { Configuration(deviceType: .builtInDualCamera) }
+
+            public static var builtInTrueDepthCamera: Configuration { Configuration(deviceType: .builtInTrueDepthCamera) }
         }
     }
 
@@ -137,6 +162,10 @@ public class Camera: NSObject, ObservableObject {
     @Published public private(set) var isPhotoProcessing: Bool = false
 
     @Published public private(set) var isCameraChanging: Bool = false
+
+    @Published public private(set) var isMovieRecoding: Bool = false
+
+    @Published public var interruptionReason: AVCaptureSession.InterruptionReason?
 
     // MARK: Preview
 
@@ -360,7 +389,7 @@ public class Camera: NSObject, ObservableObject {
                     session.sessionPreset = configuration.sessionPreset
                     if let connection = movieFileOutput.connection(with: .video) {
                         if connection.isVideoStabilizationSupported {
-                            connection.preferredVideoStabilizationMode = .auto
+                            connection.preferredVideoStabilizationMode = self.videoDevice.videoStabilizationMode
                         }
                     }
                     self.movieFileOutput = movieFileOutput
@@ -394,8 +423,8 @@ public class Camera: NSObject, ObservableObject {
         session.commitConfiguration()
     }
 
-    @IBAction private func focusAndExposeTap(_ gestureRecognizer: UITapGestureRecognizer) {
-        let devicePoint = previewView.videoPreviewLayer.captureDevicePointConverted(fromLayerPoint: gestureRecognizer.location(in: gestureRecognizer.view))
+    public func focusAndExposeTap(_ location: CGPoint) {
+        let devicePoint = previewView.videoPreviewLayer.captureDevicePointConverted(fromLayerPoint: location)
         focus(with: .autoFocus, exposureMode: .autoExpose, at: devicePoint, monitorSubjectAreaChange: true)
     }
 
@@ -443,10 +472,10 @@ public class Camera: NSObject, ObservableObject {
     private func addObservers() {
         let keyValueObservation = session.observe(\.isRunning, options: .new) { _, change in
             guard let isSessionRunning = change.newValue else { return }
-//            let isLivePhotoCaptureEnabled = self.photoOutput.isLivePhotoCaptureEnabled
-//            let isDepthDeliveryDataEnabled = self.photoOutput.isDepthDataDeliveryEnabled
-//            let isPortraitEffectsMatteEnabled = self.photoOutput.isPortraitEffectsMatteDeliveryEnabled
-//            let isSemanticSegmentationMatteEnabled = !self.photoOutput.enabledSemanticSegmentationMatteTypes.isEmpty
+            //            let isLivePhotoCaptureEnabled = self.photoOutput.isLivePhotoCaptureEnabled
+            //            let isDepthDeliveryDataEnabled = self.photoOutput.isDepthDataDeliveryEnabled
+            //            let isPortraitEffectsMatteEnabled = self.photoOutput.isPortraitEffectsMatteDeliveryEnabled
+            //            let isSemanticSegmentationMatteEnabled = !self.photoOutput.enabledSemanticSegmentationMatteTypes.isEmpty
 
             DispatchQueue.main.async {
                 self.isEnabled = isSessionRunning
@@ -479,43 +508,16 @@ public class Camera: NSObject, ObservableObject {
          */
 
         AVCaptureSessionWasInterruptedObserver = NotificationCenter.default.addObserver(forName: .AVCaptureSessionWasInterrupted, object: session, queue: .main) { notification in
-            /*
-             In some scenarios you want to enable the user to resume the session.
-             For example, if music playback is initiated from Control Center while
-             using CameraUI, then the user can let CameraUI resume
-             the session running, which will stop music playback. Note that stopping
-             music playback in Control Center will not automatically resume the session.
-             Also note that it's not always possible to resume, see `resumeInterruptedSession(_:)`.
-             */
             if let userInfoValue = notification.userInfo?[AVCaptureSessionInterruptionReasonKey] as AnyObject?,
                let reasonIntegerValue = userInfoValue.integerValue,
                let reason = AVCaptureSession.InterruptionReason(rawValue: reasonIntegerValue) {
                 print("Capture session was interrupted with reason \(reason)")
-
-
+                self.interruptionReason = reason
             }
         }
 
         AVCaptureSessionInterruptionEndedObserver = NotificationCenter.default.addObserver(forName: .AVCaptureSessionInterruptionEnded, object: session, queue: .main) { notification in
             print("Capture session interruption ended")
-
-            //            if !resumeButton.isHidden {
-            //                UIView.animate(withDuration: 0.25,
-            //                               animations: {
-            //                                self.resumeButton.alpha = 0
-            //                }, completion: { _ in
-            //                    self.resumeButton.isHidden = true
-            //                })
-            //            }
-            //            if !cameraUnavailableLabel.isHidden {
-            //                UIView.animate(withDuration: 0.25,
-            //                               animations: {
-            //                                self.cameraUnavailableLabel.alpha = 0
-            //                }, completion: { _ in
-            //                    self.cameraUnavailableLabel.isHidden = true
-            //                }
-            //                )
-            //            }
         }
     }
 
@@ -585,17 +587,17 @@ public class Camera: NSObject, ObservableObject {
 
 extension Camera {
 
-    public func change(videoDevice: VideoDevice) {
+    public func change(captureVideoDevice: VideoDevice) {
         self.isCameraChanging = true
         sessionQueue.async {
 
-            let preferredPosition: AVCaptureDevice.Position = videoDevice.position
+            let preferredPosition: AVCaptureDevice.Position = captureVideoDevice.position
 
             let devices: [AVCaptureDevice] = self.videoDeviceDiscoverySession.devices
             var newVideoDevice: AVCaptureDevice? = nil
 
             // First, seek a device with both the preferred position and device type. Otherwise, seek a device with only the preferred position.
-            if let preferredDeviceType: AVCaptureDevice.DeviceType = videoDevice.deviceType,
+            if let preferredDeviceType: AVCaptureDevice.DeviceType = captureVideoDevice.deviceType,
                let device: AVCaptureDevice = devices.first(where: { $0.position == preferredPosition && $0.deviceType == preferredDeviceType }) {
                 newVideoDevice = device
             } else if let device = devices.first(where: { $0.position == preferredPosition }) {
@@ -626,7 +628,7 @@ extension Camera {
                     }
                     if let connection = self.movieFileOutput?.connection(with: .video) {
                         if connection.isVideoStabilizationSupported {
-                            connection.preferredVideoStabilizationMode = .auto
+                            connection.preferredVideoStabilizationMode = captureVideoDevice.videoStabilizationMode
                         }
                     }
 
@@ -650,7 +652,7 @@ extension Camera {
             }
 
             DispatchQueue.main.async {
-                self.videoDevice = videoDevice
+                self.videoDevice = captureVideoDevice
                 self.isCameraChanging = false
             }
         }
@@ -660,7 +662,7 @@ extension Camera {
 extension Camera {
 
     /// - Tag: EnableDisableModes
-    public func changeCaptureMode(_ captureMode: CaptureMode) {
+    public func change(captureMode: CaptureMode) {
 
         if self.captureMode == captureMode { return }
 
@@ -714,22 +716,22 @@ extension Camera {
         }
     }
 
-    public func changeFlashMode(_ flashMode: AVCaptureDevice.FlashMode) {
+    public func change(flashMode: AVCaptureDevice.FlashMode) {
         if self.flashMode == flashMode { return }
         self.flashMode = flashMode
     }
 
-    public func changeDepthDataDeliveryMode(_ depthDataDeliveryMode: DepthDataDeliveryMode) {
+    public func change(depthDataDeliveryMode: DepthDataDeliveryMode) {
         if self.depthDataDeliveryMode == depthDataDeliveryMode { return }
         self.depthDataDeliveryMode = depthDataDeliveryMode
     }
 
-    public func changePortraitEffectsMatteDeliveryMode(_ portraitEffectsMatteDeliveryMode: PortraitEffectsMatteDeliveryMode) {
+    public func change(portraitEffectsMatteDeliveryMode: PortraitEffectsMatteDeliveryMode) {
         if self.portraitEffectsMatteDeliveryMode == portraitEffectsMatteDeliveryMode { return }
         self.portraitEffectsMatteDeliveryMode = portraitEffectsMatteDeliveryMode
     }
 
-    public func changePhotoQualityPrioritizationMode(_ photoQualityPrioritizationMode: AVCapturePhotoOutput.QualityPrioritization) {
+    public func change(photoQualityPrioritizationMode: AVCapturePhotoOutput.QualityPrioritization) {
         if self.photoQualityPrioritizationMode == photoQualityPrioritizationMode { return }
         self.photoQualityPrioritizationMode = photoQualityPrioritizationMode
     }
@@ -905,16 +907,17 @@ extension Camera: AVCaptureFileOutputRecordingDelegate {
     public func fileOutput(_ output: AVCaptureFileOutput, didStartRecordingTo fileURL: URL, from connections: [AVCaptureConnection]) {
         // Enable the Record button to let the user stop recording.
         DispatchQueue.main.async {
-//            self.recordButton.isEnabled = true
-//            self.recordButton.setImage(#imageLiteral(resourceName: "CaptureStop"), for: [])
+            self.isMovieRecoding = true
+            //            self.recordButton.isEnabled = true
+            //            self.recordButton.setImage(#imageLiteral(resourceName: "CaptureStop"), for: [])
         }
     }
 
     /// - Tag: DidFinishRecording
     public func fileOutput(_ output: AVCaptureFileOutput,
-                    didFinishRecordingTo outputFileURL: URL,
-                    from connections: [AVCaptureConnection],
-                    error: Error?) {
+                           didFinishRecordingTo outputFileURL: URL,
+                           from connections: [AVCaptureConnection],
+                           error: Error?) {
         // Note: Because we use a unique file path for each recording, a new recording won't overwrite a recording mid-save.
         func cleanup() {
             let path = outputFileURL.path
@@ -968,11 +971,12 @@ extension Camera: AVCaptureFileOutputRecordingDelegate {
 
         // Enable the Camera and Record buttons to let the user switch camera and start another recording.
         DispatchQueue.main.async {
+            self.isMovieRecoding = false
             // Only enable the ability to change camera if the device has more than one camera.
-//            self.cameraButton.isEnabled = self.videoDeviceDiscoverySession.uniqueDevicePositionsCount > 1
-//            self.recordButton.isEnabled = true
-//            self.captureModeControl.isEnabled = true
-//            self.recordButton.setImage(#imageLiteral(resourceName: "CaptureVideo"), for: [])
+            //            self.cameraButton.isEnabled = self.videoDeviceDiscoverySession.uniqueDevicePositionsCount > 1
+            //            self.recordButton.isEnabled = true
+            //            self.captureModeControl.isEnabled = true
+            //            self.recordButton.setImage(#imageLiteral(resourceName: "CaptureVideo"), for: [])
         }
     }
 
