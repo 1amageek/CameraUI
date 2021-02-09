@@ -177,6 +177,8 @@ public class Camera: NSObject, ObservableObject {
 
     private var inProgressPhotoCaptureDelegates: [Int64: PhotoCaptureProcessor] = [:]
 
+    private var inProgressFileOutputRecodingDelegates: [String: FileOutputRecordingProcesser] = [:]
+
     fileprivate var inProgressLivePhotoCapturesCount = 0
 
     // MARK: Recording Movies
@@ -805,7 +807,7 @@ extension Camera {
 
             photoSettings.photoQualityPrioritization = self.photoQualityPrioritizationMode
 
-            let photoCaptureProcessor = PhotoCaptureProcessor(with: photoSettings, willCapturePhotoAnimation: {
+            let photoCaptureProcessor: PhotoCaptureProcessor = PhotoCaptureProcessor(with: photoSettings, willCapturePhotoAnimation: {
                 // Flash the screen to signal that CameraUI took a photo.
                 DispatchQueue.main.async {
                     self.previewView.videoPreviewLayer.opacity = 0
@@ -855,6 +857,7 @@ extension Camera {
         guard let movieFileOutput = self.movieFileOutput else {
             return
         }
+        self.isMovieRecoding = true
         /*
          Disable the Camera button until recording finishes, and disable
          the Record button until recording starts or finishes.
@@ -865,8 +868,15 @@ extension Camera {
 
         sessionQueue.async {
             if !movieFileOutput.isRecording {
+
+                let fileOutputRecordingProcesser: FileOutputRecordingProcesser = FileOutputRecordingProcesser { fileOutputRecordingProcesser in
+                    self.sessionQueue.async {
+                        self.inProgressFileOutputRecodingDelegates[fileOutputRecordingProcesser.uniqueID] = nil
+                    }
+                }
+
                 if UIDevice.current.isMultitaskingSupported {
-                    self.backgroundRecordingID = UIApplication.shared.beginBackgroundTask(expirationHandler: nil)
+                    fileOutputRecordingProcesser.backgroundRecordingID = UIApplication.shared.beginBackgroundTask(expirationHandler: nil)
                 }
 
                 // Update the orientation on the movie file output video connection before recording.
@@ -880,9 +890,10 @@ extension Camera {
                 }
 
                 // Start recording video to a temporary file.
-                let outputFileName: String = NSUUID().uuidString
+                let outputFileName: String = fileOutputRecordingProcesser.uniqueID
                 let outputFilePath: String = (NSTemporaryDirectory() as NSString).appendingPathComponent((outputFileName as NSString).appendingPathExtension("mov")!)
-                movieFileOutput.startRecording(to: URL(fileURLWithPath: outputFilePath), recordingDelegate: self)
+                movieFileOutput.startRecording(to: URL(fileURLWithPath: outputFilePath), recordingDelegate: fileOutputRecordingProcesser)
+                self.inProgressFileOutputRecodingDelegates[fileOutputRecordingProcesser.uniqueID] = fileOutputRecordingProcesser
             } else {
                 movieFileOutput.stopRecording()
             }
@@ -897,90 +908,82 @@ extension Camera {
             if movieFileOutput.isRecording {
                 movieFileOutput.stopRecording()
             }
+            DispatchQueue.main.async {
+                self.isMovieRecoding = false
+            }
         }
     }
 }
 
-extension Camera: AVCaptureFileOutputRecordingDelegate {
-
-    /// - Tag: DidStartRecording
-    public func fileOutput(_ output: AVCaptureFileOutput, didStartRecordingTo fileURL: URL, from connections: [AVCaptureConnection]) {
-        // Enable the Record button to let the user stop recording.
-        DispatchQueue.main.async {
-            self.isMovieRecoding = true
-            //            self.recordButton.isEnabled = true
-            //            self.recordButton.setImage(#imageLiteral(resourceName: "CaptureStop"), for: [])
-        }
-    }
-
-    /// - Tag: DidFinishRecording
-    public func fileOutput(_ output: AVCaptureFileOutput,
-                           didFinishRecordingTo outputFileURL: URL,
-                           from connections: [AVCaptureConnection],
-                           error: Error?) {
-        // Note: Because we use a unique file path for each recording, a new recording won't overwrite a recording mid-save.
-        func cleanup() {
-            let path = outputFileURL.path
-            if FileManager.default.fileExists(atPath: path) {
-                do {
-                    try FileManager.default.removeItem(atPath: path)
-                } catch {
-                    print("Could not remove file at url: \(outputFileURL)")
-                }
-            }
-
-            if let currentBackgroundRecordingID = backgroundRecordingID {
-                backgroundRecordingID = UIBackgroundTaskIdentifier.invalid
-
-                if currentBackgroundRecordingID != UIBackgroundTaskIdentifier.invalid {
-                    UIApplication.shared.endBackgroundTask(currentBackgroundRecordingID)
-                }
-            }
-        }
-
-        var success: Bool = true
-
-        if error != nil {
-            print("Movie file finishing error: \(String(describing: error))")
-            success = (((error! as NSError).userInfo[AVErrorRecordingSuccessfullyFinishedKey] as AnyObject).boolValue)!
-        }
-
-        if success {
-            // Check the authorization status.
-            PHPhotoLibrary.requestAuthorization { status in
-                if status == .authorized {
-                    // Save the movie file to the photo library and cleanup.
-                    PHPhotoLibrary.shared().performChanges({
-                        let options = PHAssetResourceCreationOptions()
-                        options.shouldMoveFile = true
-                        let creationRequest = PHAssetCreationRequest.forAsset()
-                        creationRequest.addResource(with: .video, fileURL: outputFileURL, options: options)
-                    }, completionHandler: { success, error in
-                        if !success {
-                            print("CameraUI couldn't save the movie to your photo library: \(String(describing: error))")
-                        }
-                        cleanup()
-                    })
-                } else {
-                    cleanup()
-                }
-            }
-        } else {
-            cleanup()
-        }
-
-        // Enable the Camera and Record buttons to let the user switch camera and start another recording.
-        DispatchQueue.main.async {
-            self.isMovieRecoding = false
-            // Only enable the ability to change camera if the device has more than one camera.
-            //            self.cameraButton.isEnabled = self.videoDeviceDiscoverySession.uniqueDevicePositionsCount > 1
-            //            self.recordButton.isEnabled = true
-            //            self.captureModeControl.isEnabled = true
-            //            self.recordButton.setImage(#imageLiteral(resourceName: "CaptureVideo"), for: [])
-        }
-    }
-
-}
+//extension Camera: AVCaptureFileOutputRecordingDelegate {
+//
+//    /// - Tag: DidStartRecording
+//    public func fileOutput(_ output: AVCaptureFileOutput, didStartRecordingTo fileURL: URL, from connections: [AVCaptureConnection]) {
+//        // Enable the Record button to let the user stop recording.
+//        print("Did start recording. fileURL: \(fileURL)")
+//    }
+//
+//    /// - Tag: DidFinishRecording
+//    public func fileOutput(_ output: AVCaptureFileOutput,
+//                           didFinishRecordingTo outputFileURL: URL,
+//                           from connections: [AVCaptureConnection],
+//                           error: Error?) {
+//        // Note: Because we use a unique file path for each recording, a new recording won't overwrite a recording mid-save.
+//        func cleanup() {
+//            let path = outputFileURL.path
+//            if FileManager.default.fileExists(atPath: path) {
+//                do {
+//                    try FileManager.default.removeItem(atPath: path)
+//                } catch {
+//                    print("Could not remove file at url: \(outputFileURL)")
+//                }
+//            }
+//
+//            if let currentBackgroundRecordingID = backgroundRecordingID {
+//                backgroundRecordingID = UIBackgroundTaskIdentifier.invalid
+//
+//                if currentBackgroundRecordingID != UIBackgroundTaskIdentifier.invalid {
+//                    UIApplication.shared.endBackgroundTask(currentBackgroundRecordingID)
+//                }
+//            }
+//        }
+//
+//        var success: Bool = true
+//
+//        if error != nil {
+//            print("Movie file finishing error: \(String(describing: error))")
+//            success = (((error! as NSError).userInfo[AVErrorRecordingSuccessfullyFinishedKey] as AnyObject).boolValue)!
+//        }
+//
+//        if success {
+//            // Check the authorization status.
+//            PHPhotoLibrary.requestAuthorization { status in
+//                if status == .authorized {
+//                    // Save the movie file to the photo library and cleanup.
+//                    PHPhotoLibrary.shared().performChanges({
+//                        let options = PHAssetResourceCreationOptions()
+//                        options.shouldMoveFile = true
+//                        let creationRequest = PHAssetCreationRequest.forAsset()
+//                        creationRequest.addResource(with: .video, fileURL: outputFileURL, options: options)
+//                    }, completionHandler: { success, error in
+//                        if !success {
+//                            print("CameraUI couldn't save the movie to your photo library: \(String(describing: error))")
+//                        }
+//                        cleanup()
+//                    })
+//                } else {
+//                    cleanup()
+//                }
+//            }
+//        } else {
+//            cleanup()
+//        }
+//
+//        // Enable the Camera and Record buttons to let the user switch camera and start another recording.
+//        print("Did finish recording.")
+//    }
+//
+//}
 
 extension Camera {
     final class PreviewView: UIView {

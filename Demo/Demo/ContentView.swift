@@ -12,7 +12,11 @@ struct ContentView: View {
 
     @ObservedObject var camera: Camera = Camera(captureMode: .movie(.high))
 
+    @ObservedObject var snap: Snap = Snap()
+
     @GestureState var isDetectingLongPress = false
+
+    @State var progress: Float = 0
 
     var gesture: some Gesture {
         TapGesture()
@@ -26,6 +30,7 @@ struct ContentView: View {
                     .onEnded { value in
                         print("LongPressGesture onEnded", value)
                         camera.movieStartRecording()
+                        snap.start()
                     }
             )
             .simultaneously(
@@ -39,6 +44,7 @@ struct ContentView: View {
                     .onEnded { value in
                         print("DragGesture onEnded", isDetectingLongPress, value)
                         camera.movieStopRecording()
+                        snap.stop()
                     }
             )
     }
@@ -75,12 +81,14 @@ struct ContentView: View {
                             }
                         }
                         .font(.system(size: 26))
-                        .disabled(camera.isCameraChanging)
+                        .disabled(camera.isCameraChanging || camera.isMovieRecoding)
                     }
                     Spacer()
                     ZStack {
                         Circle()
                             .strokeBorder(Color.white, lineWidth: 4, antialiased: true)
+                            .frame(width: 70, height: 70, alignment: .center)
+                        ProgressCircle(progress: Float(snap.duration) / 10, lineWidth: 4)
                             .frame(width: 70, height: 70, alignment: .center)
                         Circle()
                             .foregroundColor(isDetectingLongPress ? Color.white.opacity(0.8) : .white)

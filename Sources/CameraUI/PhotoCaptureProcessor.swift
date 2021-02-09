@@ -46,7 +46,7 @@ class PhotoCaptureProcessor: NSObject {
     }
     
     private func didFinish() {
-        if let livePhotoCompanionMoviePath = livePhotoCompanionMovieURL?.path {
+        if let livePhotoCompanionMoviePath: String = livePhotoCompanionMovieURL?.path {
             if FileManager.default.fileExists(atPath: livePhotoCompanionMoviePath) {
                 do {
                     try FileManager.default.removeItem(atPath: livePhotoCompanionMoviePath)
