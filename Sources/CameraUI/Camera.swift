@@ -135,6 +135,10 @@ public class Camera: NSObject, ObservableObject {
 
     private var videoDeviceDiscoverySession: AVCaptureDevice.DiscoverySession!
 
+    // MARK: DeviceCapabilities
+
+    @Published public var currentDeviceCapabilities: DeviceCapabilities = DeviceCapabilities()
+
     // MARK: Mode
 
     @Published public private(set) var isEnabled: Bool = false
@@ -209,8 +213,6 @@ public class Camera: NSObject, ObservableObject {
     }
 
     private func boot() {
-        self.isEEEE = 3
-//        self._isEEEE
         switch AVCaptureDevice.authorizationStatus(for: .video) {
             case .authorized:
                 // The user has previously granted access to the camera.
@@ -412,10 +414,19 @@ public class Camera: NSObject, ObservableObject {
             selectedSemanticSegmentationMatteTypes = photoOutput.availableSemanticSegmentationMatteTypes
             photoOutput.maxPhotoQualityPrioritization = .quality
             DispatchQueue.main.async {
-                self.livePhotoMode = self.photoOutput.isLivePhotoCaptureSupported ? .on : .off
-                self.depthDataDeliveryMode = self.photoOutput.isDepthDataDeliverySupported ? .on : .off
-                self.portraitEffectsMatteDeliveryMode = self.photoOutput.isPortraitEffectsMatteDeliverySupported ? .on : .off
-                self.photoQualityPrioritizationMode = .balanced
+
+                self.currentDeviceCapabilities.isHighResolutionCaptureEnabled = true
+                self.currentDeviceCapabilities.$isLivePhotoCaptureEnabled = self.photoOutput.isLivePhotoCaptureSupported.set(true)
+                self.currentDeviceCapabilities.$isDepthDataDeliveryEnabled = self.photoOutput.isDepthDataDeliverySupported.set(true)
+                self.currentDeviceCapabilities.$isPortraitEffectsMatteDeliveryEnabled = self.photoOutput.isPortraitEffectsMatteDeliverySupported.set(true)
+                self.currentDeviceCapabilities.$enabledSemanticSegmentationMatteTypes = self.photoOutput.availableSemanticSegmentationMatteTypes.set(self.photoOutput.availableSemanticSegmentationMatteTypes)
+                self.currentDeviceCapabilities.maxPhotoQualityPrioritization = .quality
+
+
+//                self.livePhotoMode = self.photoOutput.isLivePhotoCaptureSupported ? .on : .off
+//                self.depthDataDeliveryMode = self.photoOutput.isDepthDataDeliverySupported ? .on : .off
+//                self.portraitEffectsMatteDeliveryMode = self.photoOutput.isPortraitEffectsMatteDeliverySupported ? .on : .off
+//                self.photoQualityPrioritizationMode = .balanced
             }
         } else {
             print("Could not add photo output to the session")
