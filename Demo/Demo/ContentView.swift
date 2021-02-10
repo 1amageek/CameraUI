@@ -7,6 +7,7 @@
 
 import SwiftUI
 import CameraUI
+import Photos
 
 struct ContentView: View {
 
@@ -22,14 +23,18 @@ struct ContentView: View {
         TapGesture()
             .onEnded { value in
                 print("TapGesture onEnded", value)
-                camera.capturePhoto()
+                camera.capturePhoto { resource in
+                    resource.createAsset()
+                }
             }
             .simultaneously(
                 with:
                     LongPressGesture()
                     .onEnded { value in
                         print("LongPressGesture onEnded", value)
-                        camera.movieStartRecording()
+                        camera.movieStartRecording { resource in
+                            resource.createAsset()
+                        }
                         snap.start()
                     }
             )

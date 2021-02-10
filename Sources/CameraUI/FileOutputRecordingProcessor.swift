@@ -17,8 +17,14 @@ public final class FileOutputRecordingProcesser: NSObject {
 
     private let completionHandler: (FileOutputRecordingProcesser) -> Void
 
-    public init(completionHandler: @escaping  ((FileOutputRecordingProcesser) -> Void)) {
+    private let resourceHandler: (VideoResource) -> Void
+
+    private var resource: VideoResource = VideoResource()
+
+    public init(completionHandler: @escaping ((FileOutputRecordingProcesser) -> Void),
+                resourceHandler: @escaping ((VideoResource) -> Void)) {
         self.completionHandler = completionHandler
+        self.resourceHandler = resourceHandler
     }
 }
 
@@ -60,25 +66,38 @@ extension FileOutputRecordingProcesser: AVCaptureFileOutputRecordingDelegate {
         }
 
         if success {
-            // Check the authorization status.
-            PHPhotoLibrary.requestAuthorization { status in
-                if status == .authorized {
-                    // Save the movie file to the photo library and cleanup.
-                    PHPhotoLibrary.shared().performChanges({
-                        let options = PHAssetResourceCreationOptions()
-                        options.shouldMoveFile = true
-                        let creationRequest = PHAssetCreationRequest.forAsset()
-                        creationRequest.addResource(with: .video, fileURL: outputFileURL, options: options)
-                    }, completionHandler: { success, error in
-                        if !success {
-                            print("CameraUI couldn't save the movie to your photo library: \(String(describing: error))")
-                        }
-                        cleanup()
-                    })
-                } else {
-                    cleanup()
+
+            if let currentBackgroundRecordingID = backgroundRecordingID {
+                backgroundRecordingID = UIBackgroundTaskIdentifier.invalid
+
+                if currentBackgroundRecordingID != UIBackgroundTaskIdentifier.invalid {
+                    UIApplication.shared.endBackgroundTask(currentBackgroundRecordingID)
                 }
             }
+            completionHandler(self)
+            resourceHandler(self.resource)
+            
+
+
+//            // Check the authorization status.
+//            PHPhotoLibrary.requestAuthorization { status in
+//                if status == .authorized {
+//                    // Save the movie file to the photo library and cleanup.
+//                    PHPhotoLibrary.shared().performChanges({
+//                        let options = PHAssetResourceCreationOptions()
+//                        options.shouldMoveFile = true
+//                        let creationRequest = PHAssetCreationRequest.forAsset()
+//                        creationRequest.addResource(with: .video, fileURL: outputFileURL, options: options)
+//                    }, completionHandler: { success, error in
+//                        if !success {
+//                            print("CameraUI couldn't save the movie to your photo library: \(String(describing: error))")
+//                        }
+//                        cleanup()
+//                    })
+//                } else {
+//                    cleanup()
+//                }
+//            }
         } else {
             cleanup()
         }

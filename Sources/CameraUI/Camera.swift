@@ -209,6 +209,8 @@ public class Camera: NSObject, ObservableObject {
     }
 
     private func boot() {
+        self.isEEEE = 3
+//        self._isEEEE
         switch AVCaptureDevice.authorizationStatus(for: .video) {
             case .authorized:
                 // The user has previously granted access to the camera.
@@ -762,7 +764,7 @@ extension Camera {
 extension Camera {
 
     /// - Tag: CapturePhoto
-    public func capturePhoto() {
+    public func capturePhoto(_ completion: ((PhotoResource) -> Void)? = nil) {
         /*
          Retrieve the video preview layer's video orientation on the main queue before
          entering the session queue. Do this to ensure that UI elements are accessed on
@@ -842,7 +844,11 @@ extension Camera {
                 DispatchQueue.main.async {
                     self.isPhotoProcessing = isProcessing
                 }
-            })
+            }) { photoResource in
+                DispatchQueue.main.async {
+                    completion?(photoResource)
+                }
+            }
 
             // The photo output holds a weak reference to the photo capture delegate and stores it in an array to maintain a strong reference.
             self.inProgressPhotoCaptureDelegates[photoCaptureProcessor.requestedPhotoSettings.uniqueID] = photoCaptureProcessor
@@ -853,7 +859,7 @@ extension Camera {
 
 extension Camera {
 
-    public func movieStartRecording() {
+    public func movieStartRecording(_ completion: ((VideoResource) -> Void)? = nil) {
         guard let movieFileOutput = self.movieFileOutput else {
             return
         }
@@ -869,9 +875,14 @@ extension Camera {
         sessionQueue.async {
             if !movieFileOutput.isRecording {
 
+
                 let fileOutputRecordingProcesser: FileOutputRecordingProcesser = FileOutputRecordingProcesser { fileOutputRecordingProcesser in
                     self.sessionQueue.async {
                         self.inProgressFileOutputRecodingDelegates[fileOutputRecordingProcesser.uniqueID] = nil
+                    }
+                } resourceHandler: { videoResource in
+                    DispatchQueue.main.async {
+                        completion?(videoResource)
                     }
                 }
 
@@ -892,8 +903,8 @@ extension Camera {
                 // Start recording video to a temporary file.
                 let outputFileName: String = fileOutputRecordingProcesser.uniqueID
                 let outputFilePath: String = (NSTemporaryDirectory() as NSString).appendingPathComponent((outputFileName as NSString).appendingPathExtension("mov")!)
-                movieFileOutput.startRecording(to: URL(fileURLWithPath: outputFilePath), recordingDelegate: fileOutputRecordingProcesser)
                 self.inProgressFileOutputRecodingDelegates[fileOutputRecordingProcesser.uniqueID] = fileOutputRecordingProcesser
+                movieFileOutput.startRecording(to: URL(fileURLWithPath: outputFilePath), recordingDelegate: fileOutputRecordingProcesser)
             } else {
                 movieFileOutput.stopRecording()
             }
@@ -914,76 +925,6 @@ extension Camera {
         }
     }
 }
-
-//extension Camera: AVCaptureFileOutputRecordingDelegate {
-//
-//    /// - Tag: DidStartRecording
-//    public func fileOutput(_ output: AVCaptureFileOutput, didStartRecordingTo fileURL: URL, from connections: [AVCaptureConnection]) {
-//        // Enable the Record button to let the user stop recording.
-//        print("Did start recording. fileURL: \(fileURL)")
-//    }
-//
-//    /// - Tag: DidFinishRecording
-//    public func fileOutput(_ output: AVCaptureFileOutput,
-//                           didFinishRecordingTo outputFileURL: URL,
-//                           from connections: [AVCaptureConnection],
-//                           error: Error?) {
-//        // Note: Because we use a unique file path for each recording, a new recording won't overwrite a recording mid-save.
-//        func cleanup() {
-//            let path = outputFileURL.path
-//            if FileManager.default.fileExists(atPath: path) {
-//                do {
-//                    try FileManager.default.removeItem(atPath: path)
-//                } catch {
-//                    print("Could not remove file at url: \(outputFileURL)")
-//                }
-//            }
-//
-//            if let currentBackgroundRecordingID = backgroundRecordingID {
-//                backgroundRecordingID = UIBackgroundTaskIdentifier.invalid
-//
-//                if currentBackgroundRecordingID != UIBackgroundTaskIdentifier.invalid {
-//                    UIApplication.shared.endBackgroundTask(currentBackgroundRecordingID)
-//                }
-//            }
-//        }
-//
-//        var success: Bool = true
-//
-//        if error != nil {
-//            print("Movie file finishing error: \(String(describing: error))")
-//            success = (((error! as NSError).userInfo[AVErrorRecordingSuccessfullyFinishedKey] as AnyObject).boolValue)!
-//        }
-//
-//        if success {
-//            // Check the authorization status.
-//            PHPhotoLibrary.requestAuthorization { status in
-//                if status == .authorized {
-//                    // Save the movie file to the photo library and cleanup.
-//                    PHPhotoLibrary.shared().performChanges({
-//                        let options = PHAssetResourceCreationOptions()
-//                        options.shouldMoveFile = true
-//                        let creationRequest = PHAssetCreationRequest.forAsset()
-//                        creationRequest.addResource(with: .video, fileURL: outputFileURL, options: options)
-//                    }, completionHandler: { success, error in
-//                        if !success {
-//                            print("CameraUI couldn't save the movie to your photo library: \(String(describing: error))")
-//                        }
-//                        cleanup()
-//                    })
-//                } else {
-//                    cleanup()
-//                }
-//            }
-//        } else {
-//            cleanup()
-//        }
-//
-//        // Enable the Camera and Record buttons to let the user switch camera and start another recording.
-//        print("Did finish recording.")
-//    }
-//
-//}
 
 extension Camera {
     final class PreviewView: UIView {
