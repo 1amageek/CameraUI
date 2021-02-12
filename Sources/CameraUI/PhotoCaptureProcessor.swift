@@ -197,55 +197,5 @@ extension PhotoCaptureProcessor: AVCapturePhotoCaptureDelegate {
 
         completionHandler(self)
         resourceHandler(self.resource)
-
-        
-//        guard let photoData = self.resource.photoData else {
-//            print("No photo data resource")
-//            didFinish()
-//            return
-//        }
-        
-//        PHPhotoLibrary.requestAuthorization { status in
-//            if status == .authorized {
-//                PHPhotoLibrary.shared().performChanges({
-//                    let options: PHAssetResourceCreationOptions = PHAssetResourceCreationOptions()
-//                    let creationRequest: PHAssetCreationRequest = PHAssetCreationRequest.forAsset()
-//                    options.uniformTypeIdentifier = self.requestedPhotoSettings.processedFileType.map { $0.rawValue }
-//                    creationRequest.addResource(with: .photo, data: photoData, options: options)
-//
-//                    if let livePhotoCompanionMovieURL: URL = self.resource.livePhotoCompanionMovieURL {
-//                        let livePhotoCompanionMovieFileOptions: PHAssetResourceCreationOptions = PHAssetResourceCreationOptions()
-//                        livePhotoCompanionMovieFileOptions.shouldMoveFile = true
-//                        creationRequest.addResource(with: .pairedVideo,
-//                                                    fileURL: livePhotoCompanionMovieURL,
-//                                                    options: livePhotoCompanionMovieFileOptions)
-//                    }
-//
-//                    // Save Portrait Effects Matte to Photos Library only if it was generated
-//                    if let portraitEffectsMatteData: Data = self.resource.portraitEffectsMatteData {
-//                        let creationRequest: PHAssetCreationRequest = PHAssetCreationRequest.forAsset()
-//                        creationRequest.addResource(with: .photo,
-//                                                    data: portraitEffectsMatteData,
-//                                                    options: nil)
-//                    }
-//                    // Save Portrait Effects Matte to Photos Library only if it was generated
-//                    for semanticSegmentationMatteData: Data in self.resource.semanticSegmentationMatteDataArray {
-//                        let creationRequest: PHAssetCreationRequest = PHAssetCreationRequest.forAsset()
-//                        creationRequest.addResource(with: .photo,
-//                                                    data: semanticSegmentationMatteData,
-//                                                    options: nil)
-//                    }
-//
-//                }, completionHandler: { _, error in
-//                    if let error = error {
-//                        print("Error occurred while saving photo to photo library: \(error)")
-//                    }
-//
-//                    self.didFinish()
-//                })
-//            } else {
-//                self.didFinish()
-//            }
-//        }
     }
 }

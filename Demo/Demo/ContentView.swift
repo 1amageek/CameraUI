@@ -57,7 +57,6 @@ struct ContentView: View {
     var focus: some Gesture {
         DragGesture(minimumDistance: 0)
         .onEnded { value in
-            print("DragGesture onEnded", isDetectingLongPress, value)
             camera.focusAndExposeTap(value.location)
         }
     }
@@ -74,6 +73,7 @@ struct ContentView: View {
                         if case .photo(_) = camera.captureMode {
                             camera.change(captureMode: .movie(.high))
                         } else {
+                            print(camera.captureMode)
                             camera.change(captureMode: .photo(.photo))
                         }
                     }) {

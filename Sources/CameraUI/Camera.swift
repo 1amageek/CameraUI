@@ -122,8 +122,6 @@ public class Camera: NSObject, ObservableObject {
 
     private var isSessionRunning: Bool = false
 
-    private var selectedSemanticSegmentationMatteTypes: [AVSemanticSegmentationMatte.MatteType] = []
-
     // Communicate with the session and other session objects on this queue.
     private let sessionQueue: DispatchQueue = DispatchQueue(label: "queue.session.CameraUI")
 
@@ -135,6 +133,10 @@ public class Camera: NSObject, ObservableObject {
 
     private var videoDeviceDiscoverySession: AVCaptureDevice.DiscoverySession!
 
+    // MARK: DeviceCapabilities
+
+    @Published public var controller: AVCaptureDevice.Controller = AVCaptureDevice.Controller()
+
     // MARK: Mode
 
     @Published public private(set) var isEnabled: Bool = false
@@ -142,16 +144,6 @@ public class Camera: NSObject, ObservableObject {
     @Published public private(set) var captureMode: CaptureMode = .photo(.photo)
 
     @Published public private(set) var videoDevice: VideoDevice = .back(.builtInWideAngleCamera)
-
-    @Published public var flashMode: AVCaptureDevice.FlashMode = .auto
-
-    @Published public var livePhotoMode: LivePhotoMode = .on
-
-    @Published public var depthDataDeliveryMode: DepthDataDeliveryMode = .on
-
-    @Published public var portraitEffectsMatteDeliveryMode: PortraitEffectsMatteDeliveryMode = .on
-
-    @Published public var photoQualityPrioritizationMode: AVCapturePhotoOutput.QualityPrioritization = .balanced
 
     @Published public private(set) var deviceOrientation: UIDeviceOrientation = UIDevice.current.orientation
 
@@ -209,8 +201,6 @@ public class Camera: NSObject, ObservableObject {
     }
 
     private func boot() {
-        self.isEEEE = 3
-//        self._isEEEE
         switch AVCaptureDevice.authorizationStatus(for: .video) {
             case .authorized:
                 // The user has previously granted access to the camera.
@@ -343,7 +333,7 @@ public class Camera: NSObject, ObservableObject {
                 session.commitConfiguration()
                 return
             }
-            let videoDeviceInput = try AVCaptureDeviceInput(device: videoDevice)
+            let videoDeviceInput: AVCaptureDeviceInput = try AVCaptureDeviceInput(device: videoDevice)
 
             if session.canAddInput(videoDeviceInput) {
                 session.addInput(videoDeviceInput)
@@ -409,13 +399,14 @@ public class Camera: NSObject, ObservableObject {
             photoOutput.isDepthDataDeliveryEnabled = photoOutput.isDepthDataDeliverySupported
             photoOutput.isPortraitEffectsMatteDeliveryEnabled = photoOutput.isPortraitEffectsMatteDeliverySupported
             photoOutput.enabledSemanticSegmentationMatteTypes = photoOutput.availableSemanticSegmentationMatteTypes
-            selectedSemanticSegmentationMatteTypes = photoOutput.availableSemanticSegmentationMatteTypes
+            let availableSemanticSegmentationMatteTypes: [AVSemanticSegmentationMatte.MatteType] = photoOutput.availableSemanticSegmentationMatteTypes
             photoOutput.maxPhotoQualityPrioritization = .quality
             DispatchQueue.main.async {
-                self.livePhotoMode = self.photoOutput.isLivePhotoCaptureSupported ? .on : .off
-                self.depthDataDeliveryMode = self.photoOutput.isDepthDataDeliverySupported ? .on : .off
-                self.portraitEffectsMatteDeliveryMode = self.photoOutput.isPortraitEffectsMatteDeliverySupported ? .on : .off
-                self.photoQualityPrioritizationMode = .balanced
+                self.controller.$livePhotoCaptureMode.isEnabled = self.photoOutput.isLivePhotoCaptureEnabled
+                self.controller.$depthDataDeliveryMode.isEnabled = self.photoOutput.isDepthDataDeliveryEnabled
+                self.controller.$portraitEffectsMatteDeliveryMode.isEnabled = self.photoOutput.isPortraitEffectsMatteDeliveryEnabled
+                self.controller.$semanticSegmentationMatteTypes.isEnabled = availableSemanticSegmentationMatteTypes.isEmpty
+                self.controller.photoQualityPrioritizationMode = self.photoOutput.maxPhotoQualityPrioritization
             }
         } else {
             print("Could not add photo output to the session")
@@ -476,13 +467,17 @@ public class Camera: NSObject, ObservableObject {
     private func addObservers() {
         let keyValueObservation = session.observe(\.isRunning, options: .new) { _, change in
             guard let isSessionRunning = change.newValue else { return }
-            //            let isLivePhotoCaptureEnabled = self.photoOutput.isLivePhotoCaptureEnabled
-            //            let isDepthDeliveryDataEnabled = self.photoOutput.isDepthDataDeliveryEnabled
-            //            let isPortraitEffectsMatteEnabled = self.photoOutput.isPortraitEffectsMatteDeliveryEnabled
-            //            let isSemanticSegmentationMatteEnabled = !self.photoOutput.enabledSemanticSegmentationMatteTypes.isEmpty
+            let isLivePhotoCaptureEnabled = self.photoOutput.isLivePhotoCaptureEnabled
+            let isDepthDeliveryDataEnabled = self.photoOutput.isDepthDataDeliveryEnabled
+            let isPortraitEffectsMatteEnabled = self.photoOutput.isPortraitEffectsMatteDeliveryEnabled
+            let isSemanticSegmentationMatteEnabled = !self.photoOutput.enabledSemanticSegmentationMatteTypes.isEmpty
 
             DispatchQueue.main.async {
                 self.isEnabled = isSessionRunning
+                self.controller.$livePhotoCaptureMode.isEnabled = isLivePhotoCaptureEnabled
+                self.controller.$depthDataDeliveryMode.isEnabled = isDepthDeliveryDataEnabled
+                self.controller.$portraitEffectsMatteDeliveryMode.isEnabled = isPortraitEffectsMatteEnabled
+                self.controller.$semanticSegmentationMatteTypes.isEnabled = isSemanticSegmentationMatteEnabled
             }
         }
         keyValueObservations.append(keyValueObservation)
@@ -646,8 +641,12 @@ extension Camera {
                     self.photoOutput.isDepthDataDeliveryEnabled = self.photoOutput.isDepthDataDeliverySupported
                     self.photoOutput.isPortraitEffectsMatteDeliveryEnabled = self.photoOutput.isPortraitEffectsMatteDeliverySupported
                     self.photoOutput.enabledSemanticSegmentationMatteTypes = self.photoOutput.availableSemanticSegmentationMatteTypes
-                    self.selectedSemanticSegmentationMatteTypes = self.photoOutput.availableSemanticSegmentationMatteTypes
+                    let semanticSegmentationMatteTypes = self.photoOutput.availableSemanticSegmentationMatteTypes
                     self.photoOutput.maxPhotoQualityPrioritization = .quality
+
+                    DispatchQueue.main.async {
+                        self.controller.semanticSegmentationMatteTypes = semanticSegmentationMatteTypes
+                    }
 
                     self.session.commitConfiguration()
                 } catch {
@@ -675,29 +674,54 @@ extension Camera {
                 case .photo(let configuration):
                     // Remove the AVCaptureMovieFileOutput from the session because it doesn't support capture of Live Photos.
                     self.session.beginConfiguration()
-                    self.session.removeOutput(self.movieFileOutput!)
+                    if let movieFileOutput: AVCaptureMovieFileOutput = self.movieFileOutput {
+                        self.session.removeOutput(movieFileOutput)
+                        self.movieFileOutput = nil
+                    }
                     self.session.sessionPreset = configuration.sessionPreset
 
-                    self.movieFileOutput = nil
+                    if self.photoOutput.isLivePhotoCaptureSupported {
+                        self.photoOutput.isLivePhotoCaptureEnabled = true
 
-                    self.photoOutput.isLivePhotoCaptureEnabled = self.photoOutput.isLivePhotoCaptureSupported
-                    self.photoOutput.isDepthDataDeliveryEnabled = self.photoOutput.isDepthDataDeliverySupported
-                    self.photoOutput.isPortraitEffectsMatteDeliveryEnabled = self.photoOutput.isPortraitEffectsMatteDeliverySupported
+                        DispatchQueue.main.async {
+                            self.controller.$livePhotoCaptureMode.isEnabled = true
+                        }
+                    }
+                    if self.photoOutput.isDepthDataDeliverySupported {
+                        self.photoOutput.isDepthDataDeliveryEnabled = true
+
+                        DispatchQueue.main.async {
+                            self.controller.$depthDataDeliveryMode.isEnabled = true
+                        }
+                    }
+
+                    if self.photoOutput.isPortraitEffectsMatteDeliverySupported {
+                        self.photoOutput.isPortraitEffectsMatteDeliveryEnabled = true
+
+                        DispatchQueue.main.async {
+                            self.controller.$portraitEffectsMatteDeliveryMode.isEnabled = true
+                        }
+                    }
 
                     if !self.photoOutput.availableSemanticSegmentationMatteTypes.isEmpty {
                         self.photoOutput.enabledSemanticSegmentationMatteTypes = self.photoOutput.availableSemanticSegmentationMatteTypes
-                        self.selectedSemanticSegmentationMatteTypes = self.photoOutput.availableSemanticSegmentationMatteTypes
-                    }
+                        let semanticSegmentationMatteTypes = self.photoOutput.availableSemanticSegmentationMatteTypes
 
-                    self.session.commitConfiguration()
+                        DispatchQueue.main.async {
+                            self.controller.semanticSegmentationMatteTypes = semanticSegmentationMatteTypes
+                            self.controller.$semanticSegmentationMatteTypes.isEnabled = (self.controller.depthDataDeliveryMode == .on) ? true : false
+                        }
+                    }
 
                     DispatchQueue.main.async {
                         self.captureMode = captureMode
-                        self.livePhotoMode = self.photoOutput.isLivePhotoCaptureSupported ? .on : .off
-                        self.depthDataDeliveryMode = self.photoOutput.isDepthDataDeliverySupported ? .on : .off
-                        self.portraitEffectsMatteDeliveryMode = self.photoOutput.isPortraitEffectsMatteDeliverySupported ? .on : .off
-                        self.photoQualityPrioritizationMode = .balanced
+                        self.controller.$livePhotoCaptureMode.isHidden = false
+                        self.controller.$depthDataDeliveryMode.isHidden = false
+                        self.controller.$portraitEffectsMatteDeliveryMode.isHidden = false
+                        self.controller.$semanticSegmentationMatteTypes.isHidden = false
+                        self.controller.$photoQualityPrioritizationMode.isHidden = false
                     }
+                    self.session.commitConfiguration()
                 case .movie(let configuration):
                     let movieFileOutput: AVCaptureMovieFileOutput = AVCaptureMovieFileOutput()
                     if self.session.canAddOutput(movieFileOutput) {
@@ -720,30 +744,11 @@ extension Camera {
         }
     }
 
-    public func change(flashMode: AVCaptureDevice.FlashMode) {
-        if self.flashMode == flashMode { return }
-        self.flashMode = flashMode
-    }
-
-    public func change(depthDataDeliveryMode: DepthDataDeliveryMode) {
-        if self.depthDataDeliveryMode == depthDataDeliveryMode { return }
-        self.depthDataDeliveryMode = depthDataDeliveryMode
-    }
-
-    public func change(portraitEffectsMatteDeliveryMode: PortraitEffectsMatteDeliveryMode) {
-        if self.portraitEffectsMatteDeliveryMode == portraitEffectsMatteDeliveryMode { return }
-        self.portraitEffectsMatteDeliveryMode = portraitEffectsMatteDeliveryMode
-    }
-
-    public func change(photoQualityPrioritizationMode: AVCapturePhotoOutput.QualityPrioritization) {
-        if self.photoQualityPrioritizationMode == photoQualityPrioritizationMode { return }
-        self.photoQualityPrioritizationMode = photoQualityPrioritizationMode
-    }
-
     public func changeRamp(zoomRatio: CGFloat) {
         let zoomRatio = min(max(zoomRatio, 0), 1)
 
         sessionQueue.async {
+            if self.videoDeviceInput == nil { return }
             let device: AVCaptureDevice = self.videoDeviceInput.device
             if device.isVirtualDevice {
                 print("is Virtual Device")
@@ -784,7 +789,7 @@ extension Camera {
             }
 
             if self.videoDeviceInput.device.isFlashAvailable {
-                photoSettings.flashMode = self.flashMode
+                photoSettings.flashMode = self.controller.flashMode
             }
 
             photoSettings.isHighResolutionPhotoEnabled = true
@@ -792,22 +797,22 @@ extension Camera {
                 photoSettings.previewPhotoFormat = [kCVPixelBufferPixelFormatTypeKey as String: photoSettings.__availablePreviewPhotoPixelFormatTypes.first!]
             }
             // Live Photo capture is not supported in movie mode.
-            if self.livePhotoMode == .on && self.photoOutput.isLivePhotoCaptureSupported {
+            if self.controller.livePhotoCaptureMode == .on && self.photoOutput.isLivePhotoCaptureSupported {
                 let livePhotoMovieFileName = NSUUID().uuidString
                 let livePhotoMovieFilePath = (NSTemporaryDirectory() as NSString).appendingPathComponent((livePhotoMovieFileName as NSString).appendingPathExtension("mov")!)
                 photoSettings.livePhotoMovieFileURL = URL(fileURLWithPath: livePhotoMovieFilePath)
             }
 
-            photoSettings.isDepthDataDeliveryEnabled = (self.depthDataDeliveryMode == .on && self.photoOutput.isDepthDataDeliveryEnabled)
-            photoSettings.isPortraitEffectsMatteDeliveryEnabled = (self.portraitEffectsMatteDeliveryMode == .on && self.photoOutput.isPortraitEffectsMatteDeliveryEnabled)
+            photoSettings.isDepthDataDeliveryEnabled = (self.controller.depthDataDeliveryMode == .on && self.photoOutput.isDepthDataDeliveryEnabled)
+            photoSettings.isPortraitEffectsMatteDeliveryEnabled = (self.controller.portraitEffectsMatteDeliveryMode == .on && self.photoOutput.isPortraitEffectsMatteDeliveryEnabled)
 
             if photoSettings.isDepthDataDeliveryEnabled {
                 if !self.photoOutput.availableSemanticSegmentationMatteTypes.isEmpty {
-                    photoSettings.enabledSemanticSegmentationMatteTypes = self.selectedSemanticSegmentationMatteTypes
+                    photoSettings.enabledSemanticSegmentationMatteTypes = self.controller.semanticSegmentationMatteTypes
                 }
             }
 
-            photoSettings.photoQualityPrioritization = self.photoQualityPrioritizationMode
+            photoSettings.photoQualityPrioritization = self.controller.photoQualityPrioritizationMode
 
             let photoCaptureProcessor: PhotoCaptureProcessor = PhotoCaptureProcessor(with: photoSettings, willCapturePhotoAnimation: {
                 // Flash the screen to signal that CameraUI took a photo.
