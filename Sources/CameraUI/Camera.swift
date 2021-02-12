@@ -118,6 +118,11 @@ public class Camera: NSObject, ObservableObject {
         case configurationFailed
     }
 
+    public enum Error: Swift.Error {
+        case notAuthorized
+        case configurationFailed
+    }
+
     private let session: AVCaptureSession = AVCaptureSession()
 
     private var isSessionRunning: Bool = false
@@ -158,6 +163,8 @@ public class Camera: NSObject, ObservableObject {
     @Published public private(set) var isMovieRecoding: Bool = false
 
     @Published public var interruptionReason: AVCaptureSession.InterruptionReason?
+
+    @Published public var error: Camera.Error?
 
     // MARK: Preview
 
@@ -254,36 +261,11 @@ public class Camera: NSObject, ObservableObject {
 
                 case .notAuthorized:
                     DispatchQueue.main.async {
-                        let changePrivacySetting = "CameraUI doesn't have permission to use the camera, please change privacy settings"
-                        let message = NSLocalizedString(changePrivacySetting, comment: "Alert message when the user has denied access to the camera")
-                        let alertController = UIAlertController(title: "CameraUI", message: message, preferredStyle: .alert)
-
-                        alertController.addAction(UIAlertAction(title: NSLocalizedString("OK", comment: "Alert OK button"),
-                                                                style: .cancel,
-                                                                handler: nil))
-
-                        alertController.addAction(UIAlertAction(title: NSLocalizedString("Settings", comment: "Alert button to open Settings"),
-                                                                style: .`default`,
-                                                                handler: { _ in
-                                                                    UIApplication.shared.open(URL(string: UIApplication.openSettingsURLString)!,
-                                                                                              options: [:],
-                                                                                              completionHandler: nil)
-                                                                }))
-
-                        //                    self.present(alertController, animated: true, completion: nil)
+                        self.error = .notAuthorized
                     }
-
                 case .configurationFailed:
                     DispatchQueue.main.async {
-                        let alertMsg = "Alert message when something goes wrong during capture session configuration"
-                        let message = NSLocalizedString("Unable to capture media", comment: alertMsg)
-                        let alertController = UIAlertController(title: "CameraUI", message: message, preferredStyle: .alert)
-
-                        alertController.addAction(UIAlertAction(title: NSLocalizedString("OK", comment: "Alert OK button"),
-                                                                style: .cancel,
-                                                                handler: nil))
-
-                        //                    self.present(alertController, animated: true, completion: nil)
+                        self.error = .configurationFailed
                     }
             }
         }
