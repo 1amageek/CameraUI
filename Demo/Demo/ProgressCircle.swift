@@ -19,7 +19,7 @@ struct ProgressCircle: View {
             .stroke(style: StrokeStyle(lineWidth: lineWidth, lineCap: .round, lineJoin: .round))
             .foregroundColor(Color.red)
             .rotationEffect(Angle(degrees: 270.0))
-            .animation(.linear)
+            .animation(.linear, value: self.progress)
     }
 }
 

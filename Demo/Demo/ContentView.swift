@@ -10,15 +10,15 @@ import CameraUI
 import Photos
 
 struct ContentView: View {
-
+    
     @ObservedObject var camera: Camera = Camera(captureMode: .movie(.high))
-
+    
     @ObservedObject var snap: Snap = Snap()
-
+    
     @GestureState var isDetectingLongPress = false
-
+    
     @State var progress: Float = 0
-
+    
     var gesture: some Gesture {
         TapGesture()
             .onEnded { value in
@@ -53,17 +53,18 @@ struct ContentView: View {
                     }
             )
     }
-
+    
     var focus: some Gesture {
         DragGesture(minimumDistance: 0)
-        .onEnded { value in
-            camera.focusAndExposeTap(value.location)
-        }
+            .onEnded { value in
+                camera.focusAndExposeTap(value.location)
+            }
     }
-
+    
     var body: some View {
         ZStack {
             camera.view()
+                .ignoresSafeArea(.all)
                 .background(Color.red)
                 .gesture(focus)
             VStack {
@@ -79,8 +80,7 @@ struct ContentView: View {
                     }) {
                         Group {
                             if case .photo(_) = camera.captureMode {
-                                Image(systemName: "video.fill")
-
+                                Image(systemName: "video.fill")                                
                             } else {
                                 Image(systemName: "camera.fill")
                             }
@@ -99,7 +99,7 @@ struct ContentView: View {
                             .foregroundColor(isDetectingLongPress ? Color.white.opacity(0.8) : .white)
                             .frame(width: 58, height: 58, alignment: .center)
                             .gesture(gesture)
-
+                        
                     }
                     Spacer()
                     Button(action: {

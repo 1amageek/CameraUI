@@ -292,47 +292,46 @@ public class Camera: NSObject, ObservableObject {
         session.beginConfiguration()
 
         // Add video input.
+        var defaultVideoDevice: AVCaptureDevice?
+
+        // Choose the back dual camera, if available, otherwise default to a wide angle camera.
+
+        if let deviceType: AVCaptureDevice.DeviceType = videoDevice.deviceType,
+           let defaultDevice: AVCaptureDevice = AVCaptureDevice.default(deviceType, for: .video, position: videoDevice.position) {
+            defaultVideoDevice = defaultDevice
+        } else if let dualCameraDevice: AVCaptureDevice = AVCaptureDevice.default(.builtInDualCamera, for: .video, position: .back) {
+            defaultVideoDevice = dualCameraDevice
+        } else if let backCameraDevice: AVCaptureDevice = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) {
+            defaultVideoDevice = backCameraDevice
+        } else if let builtInUltraWideCamera: AVCaptureDevice = AVCaptureDevice.default(.builtInUltraWideCamera, for: .video, position: .back) {
+            defaultVideoDevice = builtInUltraWideCamera
+        } else if let frontCameraDevice: AVCaptureDevice = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .front) {
+            defaultVideoDevice = frontCameraDevice
+        }
+        guard let videoDevice = defaultVideoDevice else {
+            print("Default video device is unavailable.")
+            setupResult = .configurationFailed
+            session.commitConfiguration()
+            return
+        }
         do {
-            var defaultVideoDevice: AVCaptureDevice?
-
-            // Choose the back dual camera, if available, otherwise default to a wide angle camera.
-
-            if let deviceType: AVCaptureDevice.DeviceType = videoDevice.deviceType,
-               let defaultDevice: AVCaptureDevice = AVCaptureDevice.default(deviceType, for: .video, position: videoDevice.position) {
-                defaultVideoDevice = defaultDevice
-            } else if let dualCameraDevice: AVCaptureDevice = AVCaptureDevice.default(.builtInDualCamera, for: .video, position: .back) {
-                defaultVideoDevice = dualCameraDevice
-            } else if let backCameraDevice: AVCaptureDevice = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) {
-                // If a rear dual camera is not available, default to the rear wide angle camera.
-                defaultVideoDevice = backCameraDevice
-            } else if let frontCameraDevice: AVCaptureDevice = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .front) {
-                // If the rear wide angle camera isn't available, default to the front wide angle camera.
-                defaultVideoDevice = frontCameraDevice
-            }
-            guard let videoDevice = defaultVideoDevice else {
-                print("Default video device is unavailable.")
-                setupResult = .configurationFailed
-                session.commitConfiguration()
-                return
-            }
             let videoDeviceInput: AVCaptureDeviceInput = try AVCaptureDeviceInput(device: videoDevice)
-
-            if session.canAddInput(videoDeviceInput) {
-                session.addInput(videoDeviceInput)
-                self.videoDeviceInput = videoDeviceInput
-
-                DispatchQueue.main.async {
-                    var initialVideoOrientation: AVCaptureVideoOrientation = .portrait
-                    if let videoOrientation = AVCaptureVideoOrientation(deviceOrientation: UIDevice.current.orientation) {
-                        initialVideoOrientation = videoOrientation
-                    }
-                    self.previewView.videoPreviewLayer.connection?.videoOrientation = initialVideoOrientation
-                }
-            } else {
+            guard session.canAddInput(videoDeviceInput) else {
                 print("Couldn't add video device input to the session.")
                 setupResult = .configurationFailed
                 session.commitConfiguration()
                 return
+            }
+
+            session.addInput(videoDeviceInput)
+            self.videoDeviceInput = videoDeviceInput
+
+            DispatchQueue.main.async {
+                var initialVideoOrientation: AVCaptureVideoOrientation = .portrait
+                if let videoOrientation = AVCaptureVideoOrientation(deviceOrientation: UIDevice.current.orientation) {
+                    initialVideoOrientation = videoOrientation
+                }
+                self.previewView.videoPreviewLayer.connection?.videoOrientation = initialVideoOrientation
             }
         } catch {
             print("Couldn't create video device input: \(error)")
@@ -342,10 +341,9 @@ public class Camera: NSObject, ObservableObject {
         }
 
         // Add an audio input device.
+        let audioDevice = AVCaptureDevice.default(for: .audio)
         do {
-            let audioDevice = AVCaptureDevice.default(for: .audio)
             let audioDeviceInput = try AVCaptureDeviceInput(device: audioDevice!)
-
             if session.canAddInput(audioDeviceInput) {
                 session.addInput(audioDeviceInput)
             } else {
@@ -376,7 +374,10 @@ public class Camera: NSObject, ObservableObject {
                 session.sessionPreset = configuration.sessionPreset
             }
 
-            photoOutput.isHighResolutionCaptureEnabled = true
+            let maxDimensions = videoDevice.activeFormat.supportedMaxPhotoDimensions
+                    .max(by: { $0.width * $0.height < $1.width * $1.height })
+            
+            photoOutput.maxPhotoDimensions = maxDimensions!
             photoOutput.isLivePhotoCaptureEnabled = photoOutput.isLivePhotoCaptureSupported
             photoOutput.isDepthDataDeliveryEnabled = photoOutput.isDepthDataDeliverySupported
             photoOutput.isPortraitEffectsMatteDeliveryEnabled = photoOutput.isPortraitEffectsMatteDeliverySupported
@@ -773,8 +774,12 @@ extension Camera {
             if self.videoDeviceInput.device.isFlashAvailable {
                 photoSettings.flashMode = self.controller.flashMode
             }
-
-            photoSettings.isHighResolutionPhotoEnabled = true
+            
+            let maxDimensions = self.videoDeviceInput.device.activeFormat.supportedMaxPhotoDimensions
+                    .max(by: { $0.width * $0.height < $1.width * $1.height })
+                        
+            photoSettings.maxPhotoDimensions = maxDimensions!
+            
             if !photoSettings.__availablePreviewPhotoPixelFormatTypes.isEmpty {
                 photoSettings.previewPhotoFormat = [kCVPixelBufferPixelFormatTypeKey as String: photoSettings.__availablePreviewPhotoPixelFormatTypes.first!]
             }

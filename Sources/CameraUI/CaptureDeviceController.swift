@@ -16,6 +16,7 @@ extension AVCaptureDevice {
 
 extension AVCaptureDevice {
     public struct Controller {
+//        @Control(state: .default) public var maxPhotoDimensions: CMVideoDimensions
         @Control(state: .default) public var flashMode: AVCaptureDevice.FlashMode = .auto
         @Control(state: .default) public var livePhotoCaptureMode: AVCaptureDevice.LivePhotoCaptureMode = .on
         @Control(state: .default) public var depthDataDeliveryMode: AVCaptureDevice.DepthDataDeliveryMode = .on

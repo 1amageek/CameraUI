@@ -6,31 +6,37 @@
 //
 
 import SwiftUI
-import UIKit
 import AVFoundation
 
-extension Camera.PreviewView: UIViewRepresentable {
-
-    public func makeUIView(context: Context) -> Camera.PreviewView {
-        return self
-    }
-
-    public func updateUIView(_ uiView: Camera.PreviewView, context: Context) { }
-}
-
 extension Camera {
+    
+    struct _PreviewView: UIViewRepresentable {
+
+        typealias UIViewType = Camera.PreviewView
+        
+        var uiView: Camera.PreviewView
+        
+        init(_ uiView: Camera.PreviewView) {
+            self.uiView = uiView
+        }
+        
+        func makeUIView(context: Context) -> Camera.PreviewView {
+            uiView
+        }
+        
+        func updateUIView(_ uiView: Camera.PreviewView, context: Context) {
+            
+        }
+    }
 
     public func view(_ videoGravity: AVLayerVideoGravity = .resizeAspect) -> some View {
         self.previewView.videoGravity = videoGravity
-        return self.previewView
+        return _PreviewView(self.previewView)
             .onAppear { self.onAppear() }
             .onDisappear { self.onDisappear() }
     }
 }
 
-
-struct PreviewView_Previews: PreviewProvider {
-    static var previews: some View {
-        Camera().view()
-    }
+#Preview {
+    Camera().view()
 }
