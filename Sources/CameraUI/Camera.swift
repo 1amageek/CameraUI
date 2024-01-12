@@ -168,7 +168,7 @@ public class Camera: NSObject, ObservableObject {
     
     // MARK: Preview
     
-    let previewView: PreviewView = PreviewView()
+    public let previewView: PreviewView = PreviewView()
     
     // MARK: Capturing Photos
     
@@ -919,13 +919,13 @@ extension Camera {
 }
 
 extension Camera {
-    final class PreviewView: UIView {
+    final public class PreviewView: UIView {
         
-        override class var layerClass: AnyClass {
+        public override class var layerClass: AnyClass {
             return AVCaptureVideoPreviewLayer.self
         }
         
-        var videoPreviewLayer: AVCaptureVideoPreviewLayer {
+        public var videoPreviewLayer: AVCaptureVideoPreviewLayer {
             guard let layer = layer as? AVCaptureVideoPreviewLayer else {
                 fatalError("Expected `AVCaptureVideoPreviewLayer` type for layer. Check PreviewView.layerClass implementation.")
             }
@@ -952,7 +952,7 @@ extension Camera {
             }
         }
         
-        override func layoutSublayers(of layer: CALayer) {
+        public override func layoutSublayers(of layer: CALayer) {
             super.layoutSublayers(of: layer)
         }
     }
