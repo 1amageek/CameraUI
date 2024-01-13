@@ -91,9 +91,22 @@ public class Camera: NSObject, ObservableObject {
             
             public static var builtInWideAngleCamera: Configuration { Configuration(deviceType: .builtInWideAngleCamera) }
             
+            public static var builtInTelephotoCamera: Configuration { Configuration(deviceType: .builtInTelephotoCamera) }
+            
+            public static var builtInUltraWideCamera: Configuration { Configuration(deviceType: .builtInUltraWideCamera) }
+            
             public static var builtInDualCamera: Configuration { Configuration(deviceType: .builtInDualCamera) }
             
+            public static var builtInDualWideCamera: Configuration { Configuration(deviceType: .builtInDualWideCamera) }
+            
+            public static var builtInTripleCamera: Configuration { Configuration(deviceType: .builtInTripleCamera) }
+            
             public static var builtInTrueDepthCamera: Configuration { Configuration(deviceType: .builtInTrueDepthCamera) }
+            
+            public static var builtInLiDARDepthCamera: Configuration { Configuration(deviceType: .builtInLiDARDepthCamera) }
+            
+            public static var continuityCamera: Configuration { Configuration(deviceType: .continuityCamera) }
+            
         }
     }
     
@@ -185,6 +198,8 @@ public class Camera: NSObject, ObservableObject {
     private var movieFileOutput: AVCaptureMovieFileOutput?
     
     private var backgroundRecordingID: UIBackgroundTaskIdentifier?
+    
+    private var videoDeviceRotationCoordinator: AVCaptureDevice.RotationCoordinator!
     
     override private init() {
         super.init()
@@ -281,7 +296,19 @@ public class Camera: NSObject, ObservableObject {
         }
     }
     
+    private var videoRotationAngleForHorizonLevelPreviewObservation: NSKeyValueObservation?
     
+    private func createDeviceRotationCoordinator() {
+        videoDeviceRotationCoordinator = AVCaptureDevice.RotationCoordinator(device: videoDeviceInput.device, previewLayer: previewView.videoPreviewLayer)
+        previewView.videoPreviewLayer.connection?.videoRotationAngle = videoDeviceRotationCoordinator.videoRotationAngleForHorizonLevelPreview
+        
+        videoRotationAngleForHorizonLevelPreviewObservation = videoDeviceRotationCoordinator.observe(\.videoRotationAngleForHorizonLevelPreview, options: .new) { _, change in
+            guard let videoRotationAngleForHorizonLevelPreview = change.newValue else { return }
+            
+            self.previewView.videoPreviewLayer.connection?.videoRotationAngle = videoRotationAngleForHorizonLevelPreview
+        }
+    }
+
     // Call this on the session queue.
     /// - Tag: ConfigureSession
     private func configureSession() {
@@ -327,11 +354,7 @@ public class Camera: NSObject, ObservableObject {
             self.videoDeviceInput = videoDeviceInput
             
             DispatchQueue.main.async {
-                var initialVideoOrientation: AVCaptureVideoOrientation = .portrait
-                if let videoOrientation = AVCaptureVideoOrientation(deviceOrientation: UIDevice.current.orientation) {
-                    initialVideoOrientation = videoOrientation
-                }
-                self.previewView.videoPreviewLayer.connection?.videoOrientation = initialVideoOrientation
+                self.createDeviceRotationCoordinator()
             }
         } catch {
             print("Couldn't create video device input: \(error)")
@@ -605,6 +628,9 @@ extension Camera {
                         }
                         self.session.addInput(videoDeviceInput)
                         self.videoDeviceInput = videoDeviceInput
+                        DispatchQueue.main.async {
+                            self.createDeviceRotationCoordinator()
+                        }
                     } else {
                         self.session.addInput(self.videoDeviceInput)
                     }
