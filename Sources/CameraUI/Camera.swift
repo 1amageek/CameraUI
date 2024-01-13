@@ -145,7 +145,7 @@ public class Camera: NSObject, ObservableObject {
     
     private var setupResult: SessionSetupResult = .success
     
-    @objc dynamic var videoDeviceInput: AVCaptureDeviceInput!
+    @objc public dynamic var videoDeviceInput: AVCaptureDeviceInput!
     
     // MARK: Device Configuration
     
