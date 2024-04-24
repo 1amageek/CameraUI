@@ -309,25 +309,38 @@ public class Camera: NSObject, ObservableObject {
     
     private func createDeviceRotationCoordinator() {
         videoDeviceRotationCoordinator = AVCaptureDevice.RotationCoordinator(device: videoDeviceInput.device, previewLayer: previewView.videoPreviewLayer)
-        
+
         let newVideoRotationAngle: CGFloat = {
             switch angleMode {
             case .fixed:
-                return .pi/2 // 90 degrees
+                // Example: Lock to portrait (90 degrees)
+                return .pi/2
             case .responsive:
                 return videoDeviceRotationCoordinator.videoRotationAngleForHorizonLevelPreview
             }
         }()
         
-        previewView.videoPreviewLayer.connection?.videoRotationAngle = newVideoRotationAngle
+        // Ensure connection exists and supports the new rotation angle before setting it.
+        guard let connection = previewView.videoPreviewLayer.connection,
+              connection.isVideoRotationAngleSupported(newVideoRotationAngle) else {
+            print("The video rotation angle is either unsupported or the connection is nil.")
+            return
+        }
         
+        connection.videoRotationAngle = newVideoRotationAngle
+        
+        // Set up an observer to adjust the video rotation angle when the mode is responsive
         videoRotationAngleForHorizonLevelPreviewObservation = videoDeviceRotationCoordinator.observe(\.videoRotationAngleForHorizonLevelPreview, options: .new) { _, change in
-            guard let videoRotationAngleForHorizonLevelPreview = change.newValue else { return }
-            if self.angleMode == .responsive {
-                self.previewView.videoPreviewLayer.connection?.videoRotationAngle = videoRotationAngleForHorizonLevelPreview
+            guard let videoRotationAngleForHorizonLevelPreview = change.newValue,
+                  self.angleMode == .responsive,
+                  connection.isVideoRotationAngleSupported(videoRotationAngleForHorizonLevelPreview) else {
+                return
             }
+            
+            connection.videoRotationAngle = videoRotationAngleForHorizonLevelPreview
         }
     }
+
     
     // Call this on the session queue.
     /// - Tag: ConfigureSession
