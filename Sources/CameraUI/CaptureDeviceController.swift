@@ -18,4 +18,3 @@ extension AVCaptureDevice {
         @Control(state: .default) public var photoQualityPrioritizationMode: AVCapturePhotoOutput.QualityPrioritization = .balanced
     }
 }
-

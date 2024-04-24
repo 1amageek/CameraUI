@@ -74,7 +74,6 @@ struct ContentView: View {
                         if case .photo(_) = camera.captureMode {
                             camera.change(captureMode: .movie(.high))
                         } else {
-                            print(camera.captureMode)
                             camera.change(captureMode: .photo(.photo))
                         }
                     }) {
