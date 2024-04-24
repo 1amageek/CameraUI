@@ -17,12 +17,12 @@ public final class FileOutputRecordingProcesser: NSObject {
 
     private let completionHandler: (FileOutputRecordingProcesser) -> Void
 
-    private let resourceHandler: (VideoResource) -> Void
+    private let resourceHandler: (CapturedVideo) -> Void
 
-    private var resource: VideoResource = VideoResource()
+    private var resource: CapturedVideo = CapturedVideo()
 
     public init(completionHandler: @escaping ((FileOutputRecordingProcesser) -> Void),
-                resourceHandler: @escaping ((VideoResource) -> Void)) {
+                resourceHandler: @escaping ((CapturedVideo) -> Void)) {
         self.completionHandler = completionHandler
         self.resourceHandler = resourceHandler
     }
@@ -39,7 +39,7 @@ extension FileOutputRecordingProcesser: AVCaptureFileOutputRecordingDelegate {
                            from connections: [AVCaptureConnection],
                            error: Error?) {
         func cleanup() {
-            let path: String = outputFileURL.path
+            let path = outputFileURL.path
             if FileManager.default.fileExists(atPath: path) {
                 do {
                     try FileManager.default.removeItem(atPath: path)
@@ -47,41 +47,39 @@ extension FileOutputRecordingProcesser: AVCaptureFileOutputRecordingDelegate {
                     print("Could not remove file at url: \(outputFileURL)")
                 }
             }
-
+            
             if let currentBackgroundRecordingID = backgroundRecordingID {
-                backgroundRecordingID = UIBackgroundTaskIdentifier.invalid
-
-                if currentBackgroundRecordingID != UIBackgroundTaskIdentifier.invalid {
+                backgroundRecordingID = .invalid
+                if currentBackgroundRecordingID != .invalid {
                     UIApplication.shared.endBackgroundTask(currentBackgroundRecordingID)
                 }
             }
+            
             self.completionHandler(self)
         }
-
-        var success: Bool = true
-
-        if error != nil {
-            print("Movie file finishing error: \(String(describing: error))")
-            success = (((error! as NSError).userInfo[AVErrorRecordingSuccessfullyFinishedKey] as AnyObject).boolValue)!
+        
+        var success = true
+        if let error = error {
+            print("Movie file finishing error: \(error)")
+            success = ((error as NSError).userInfo[AVErrorRecordingSuccessfullyFinishedKey] as? Bool) ?? false
         }
-
+        
         if success {
-
+            resource.outputFileURL = outputFileURL
+            
             if let currentBackgroundRecordingID = backgroundRecordingID {
-                backgroundRecordingID = UIBackgroundTaskIdentifier.invalid
-
-                if currentBackgroundRecordingID != UIBackgroundTaskIdentifier.invalid {
+                backgroundRecordingID = .invalid
+                if currentBackgroundRecordingID != .invalid {
                     UIApplication.shared.endBackgroundTask(currentBackgroundRecordingID)
                 }
             }
+            
             completionHandler(self)
-            resourceHandler(self.resource)
+            resourceHandler(resource)
         } else {
             cleanup()
         }
-
-        // Enable the Camera and Record buttons to let the user switch camera and start another recording.
+        
         print("Did finish recording.")
     }
-
 }

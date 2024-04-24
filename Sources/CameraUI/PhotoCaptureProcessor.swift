@@ -23,9 +23,9 @@ class PhotoCaptureProcessor: NSObject {
     
     private let photoProcessingHandler: (Bool) -> Void
 
-    private let resourceHandler: (PhotoResource) -> Void
+    private let resourceHandler: (CapturedPhoto) -> Void
     
-    private var resource: PhotoResource = PhotoResource()
+    private var resource: CapturedPhoto = CapturedPhoto()
     
     private var maxPhotoProcessingTime: CMTime?
     
@@ -34,7 +34,7 @@ class PhotoCaptureProcessor: NSObject {
          livePhotoCaptureHandler: @escaping (Bool) -> Void,
          completionHandler: @escaping (PhotoCaptureProcessor) -> Void,
          photoProcessingHandler: @escaping (Bool) -> Void,
-         resourceHandler: @escaping (PhotoResource) -> Void
+         resourceHandler: @escaping (CapturedPhoto) -> Void
          ) {
         self.requestedPhotoSettings = requestedPhotoSettings
         self.willCapturePhotoAnimation = willCapturePhotoAnimation

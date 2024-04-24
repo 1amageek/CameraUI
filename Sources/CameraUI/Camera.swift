@@ -308,7 +308,7 @@ public class Camera: NSObject, ObservableObject {
             self.previewView.videoPreviewLayer.connection?.videoRotationAngle = videoRotationAngleForHorizonLevelPreview
         }
     }
-
+    
     // Call this on the session queue.
     /// - Tag: ConfigureSession
     private func configureSession() {
@@ -778,17 +778,16 @@ extension Camera {
 extension Camera {
     
     /// - Tag: CapturePhoto
-    public func capturePhoto(_ completion: ((PhotoResource) -> Void)? = nil) {
+    public func capturePhoto(_ completion: ((CapturedPhoto) -> Void)? = nil) {
         /*
          Retrieve the video preview layer's video orientation on the main queue before
          entering the session queue. Do this to ensure that UI elements are accessed on
          the main thread and session configuration is done on the session queue.
          */
-        let videoPreviewLayerOrientation = previewView.videoPreviewLayer.connection?.videoOrientation
         
         sessionQueue.async {
             if let photoOutputConnection = self.photoOutput.connection(with: .video) {
-                photoOutputConnection.videoOrientation = videoPreviewLayerOrientation!
+                photoOutputConnection.videoRotationAngle = self.videoDeviceRotationCoordinator.videoRotationAngleForHorizonLevelPreview
             }
             var photoSettings: AVCapturePhotoSettings = AVCapturePhotoSettings()
             
@@ -862,9 +861,9 @@ extension Camera {
                 DispatchQueue.main.async {
                     self.isPhotoProcessing = isProcessing
                 }
-            }) { photoResource in
+            }) { CapturedPhoto in
                 DispatchQueue.main.async {
-                    completion?(photoResource)
+                    completion?(CapturedPhoto)
                 }
             }
             
@@ -877,57 +876,39 @@ extension Camera {
 
 extension Camera {
     
-    public func movieStartRecording(_ completion: ((VideoResource) -> Void)? = nil) {
-        guard let movieFileOutput = self.movieFileOutput else {
-            return
-        }
-        self.isMovieRecoding = true
-        /*
-         Disable the Camera button until recording finishes, and disable
-         the Record button until recording starts or finishes.
-         
-         See the AVCaptureFileOutputRecordingDelegate methods.
-         */
-        let videoPreviewLayerOrientation: AVCaptureVideoOrientation? = previewView.videoPreviewLayer.connection?.videoOrientation
-        
-        sessionQueue.async {
-            if !movieFileOutput.isRecording {
-                
-                
-                let fileOutputRecordingProcesser: FileOutputRecordingProcesser = FileOutputRecordingProcesser { fileOutputRecordingProcesser in
-                    self.sessionQueue.async {
-                        self.inProgressFileOutputRecodingDelegates[fileOutputRecordingProcesser.uniqueID] = nil
+    public func movieStartRecording(_ completion: ((CapturedVideo) -> Void)? = nil) {
+            guard let movieFileOutput = self.movieFileOutput else {
+                return
+            }
+            self.isMovieRecoding = true
+            
+            sessionQueue.async {
+                if !movieFileOutput.isRecording {
+                    
+                    let fileOutputRecordingProcesser: FileOutputRecordingProcesser = FileOutputRecordingProcesser { fileOutputRecordingProcesser in
+                        self.sessionQueue.async {
+                            self.inProgressFileOutputRecodingDelegates[fileOutputRecordingProcesser.uniqueID] = nil
+                        }
+                    } resourceHandler: { CapturedVideo in
+                        DispatchQueue.main.async {
+                            completion?(CapturedVideo)
+                        }
                     }
-                } resourceHandler: { videoResource in
-                    DispatchQueue.main.async {
-                        completion?(videoResource)
+                    
+                    if UIDevice.current.isMultitaskingSupported {
+                        fileOutputRecordingProcesser.backgroundRecordingID = UIApplication.shared.beginBackgroundTask(expirationHandler: nil)
                     }
+                    
+                    // Update the orientation on the movie file output video connection before recording.
+                    let movieFileOutputConnection: AVCaptureConnection? = movieFileOutput.connection(with: .video)
+                    movieFileOutputConnection?.videoRotationAngle = self.videoDeviceRotationCoordinator.videoRotationAngleForHorizonLevelPreview
+                    
+                    // ... (省略) ...
+                } else {
+                    movieFileOutput.stopRecording()
                 }
-                
-                if UIDevice.current.isMultitaskingSupported {
-                    fileOutputRecordingProcesser.backgroundRecordingID = UIApplication.shared.beginBackgroundTask(expirationHandler: nil)
-                }
-                
-                // Update the orientation on the movie file output video connection before recording.
-                let movieFileOutputConnection: AVCaptureConnection? = movieFileOutput.connection(with: .video)
-                movieFileOutputConnection?.videoOrientation = videoPreviewLayerOrientation!
-                
-                let availableVideoCodecTypes: [AVVideoCodecType] = movieFileOutput.availableVideoCodecTypes
-                
-                if availableVideoCodecTypes.contains(.hevc) {
-                    movieFileOutput.setOutputSettings([AVVideoCodecKey: AVVideoCodecType.hevc], for: movieFileOutputConnection!)
-                }
-                
-                // Start recording video to a temporary file.
-                let outputFileName: String = fileOutputRecordingProcesser.uniqueID
-                let outputFilePath: String = (NSTemporaryDirectory() as NSString).appendingPathComponent((outputFileName as NSString).appendingPathExtension("mov")!)
-                self.inProgressFileOutputRecodingDelegates[fileOutputRecordingProcesser.uniqueID] = fileOutputRecordingProcesser
-                movieFileOutput.startRecording(to: URL(fileURLWithPath: outputFilePath), recordingDelegate: fileOutputRecordingProcesser)
-            } else {
-                movieFileOutput.stopRecording()
             }
         }
-    }
     
     public func movieStopRecording() {
         guard let movieFileOutput = self.movieFileOutput else {
@@ -980,28 +961,6 @@ extension Camera {
         
         public override func layoutSublayers(of layer: CALayer) {
             super.layoutSublayers(of: layer)
-        }
-    }
-}
-
-extension AVCaptureVideoOrientation {
-    init?(deviceOrientation: UIDeviceOrientation) {
-        switch deviceOrientation {
-        case .portrait: self = .portrait
-        case .portraitUpsideDown: self = .portraitUpsideDown
-        case .landscapeLeft: self = .landscapeRight
-        case .landscapeRight: self = .landscapeLeft
-        default: return nil
-        }
-    }
-    
-    init?(interfaceOrientation: UIInterfaceOrientation) {
-        switch interfaceOrientation {
-        case .portrait: self = .portrait
-        case .portraitUpsideDown: self = .portraitUpsideDown
-        case .landscapeLeft: self = .landscapeLeft
-        case .landscapeRight: self = .landscapeRight
-        default: return nil
         }
     }
 }
