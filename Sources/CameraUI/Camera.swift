@@ -1,5 +1,5 @@
 //
-//  File.swift
+//  Camera.swift
 //
 //
 //  Created by nori on 2021/02/06.
@@ -110,7 +110,12 @@ public class Camera: NSObject, ObservableObject {
         }
     }
     
-    public enum LivePhotoMode {
+    public enum AngleMode {
+        case fixed
+        case responsive
+    }
+    
+    public enum LivePhotoCaptureMode {
         case on
         case off
     }
@@ -156,6 +161,8 @@ public class Camera: NSObject, ObservableObject {
     @Published public var controller: AVCaptureDevice.Controller = AVCaptureDevice.Controller()
     
     // MARK: Mode
+    
+    @Published public private(set) var angleMode: AngleMode = .responsive
     
     @Published public private(set) var isEnabled: Bool = false
     
@@ -207,6 +214,7 @@ public class Camera: NSObject, ObservableObject {
     
     public convenience init(captureMode: CaptureMode = .photo(.photo),
                             videoDevice: VideoDevice = .back(.builtInWideAngleCamera),
+                            angleMode: AngleMode = .responsive,
                             useDeviceTypes: [AVCaptureDevice.DeviceType] = [
                                 .builtInWideAngleCamera,
                                 .builtInDualCamera,
@@ -215,6 +223,7 @@ public class Camera: NSObject, ObservableObject {
                                 self.init()
                                 self.captureMode = captureMode
                                 self.videoDevice = videoDevice
+                                self.angleMode = angleMode
                                 self.videoDeviceDiscoverySession = AVCaptureDevice.DiscoverySession(deviceTypes: useDeviceTypes,
                                                                                                     mediaType: .video,
                                                                                                     position: .unspecified)
@@ -300,12 +309,23 @@ public class Camera: NSObject, ObservableObject {
     
     private func createDeviceRotationCoordinator() {
         videoDeviceRotationCoordinator = AVCaptureDevice.RotationCoordinator(device: videoDeviceInput.device, previewLayer: previewView.videoPreviewLayer)
-        previewView.videoPreviewLayer.connection?.videoRotationAngle = videoDeviceRotationCoordinator.videoRotationAngleForHorizonLevelPreview
+        
+        let newVideoRotationAngle: CGFloat = {
+            switch angleMode {
+            case .fixed:
+                return .pi/2 // 90 degrees
+            case .responsive:
+                return videoDeviceRotationCoordinator.videoRotationAngleForHorizonLevelPreview
+            }
+        }()
+        
+        previewView.videoPreviewLayer.connection?.videoRotationAngle = newVideoRotationAngle
         
         videoRotationAngleForHorizonLevelPreviewObservation = videoDeviceRotationCoordinator.observe(\.videoRotationAngleForHorizonLevelPreview, options: .new) { _, change in
             guard let videoRotationAngleForHorizonLevelPreview = change.newValue else { return }
-            
-            self.previewView.videoPreviewLayer.connection?.videoRotationAngle = videoRotationAngleForHorizonLevelPreview
+            if self.angleMode == .responsive {
+                self.previewView.videoPreviewLayer.connection?.videoRotationAngle = videoRotationAngleForHorizonLevelPreview
+            }
         }
     }
     
@@ -670,6 +690,18 @@ extension Camera {
         }
     }
 }
+
+// MARK: - Angle
+
+extension Camera {
+    
+    public func toggleAngleMode() {
+        angleMode = (angleMode == .fixed) ? .responsive : .fixed
+        createDeviceRotationCoordinator() // Refresh rotation settings
+    }
+}
+
+// MARK: - Chage CaptureMode
 
 extension Camera {
     

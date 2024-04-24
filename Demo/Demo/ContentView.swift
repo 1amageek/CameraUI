@@ -11,9 +11,9 @@ import Photos
 
 struct ContentView: View {
     
-    @ObservedObject var camera: Camera = Camera(captureMode: .movie(.high))
+    @StateObject var camera: Camera = Camera(captureMode: .movie(.high))
     
-    @ObservedObject var snap: Snap = Snap()
+    @StateObject var snap: Snap = Snap()
     
     @GestureState var isDetectingLongPress = false
     
