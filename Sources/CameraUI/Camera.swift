@@ -319,23 +319,7 @@ public class Camera: NSObject, ObservableObject {
     private func createDeviceRotationCoordinator() {
         videoDeviceRotationCoordinator = AVCaptureDevice.RotationCoordinator(device: videoDeviceInput.device, previewLayer: previewView.videoPreviewLayer)
 
-        let newVideoRotationAngle: CGFloat = {
-            switch captureMode.configuration.angleMode {
-            case .fixed(let orientation):
-                switch orientation {
-                case .portrait:
-                    return .pi / 2
-                case .portraitUpsideDown:
-                    return -.pi / 2
-                case .landscapeLeft:
-                    return .pi
-                case .landscapeRight:
-                    return 0
-                }
-            case .responsive:
-                return videoDeviceRotationCoordinator.videoRotationAngleForHorizonLevelPreview
-            }
-        }()
+        let newVideoRotationAngle: CGFloat = getVideoRotationAngle(videoDeviceRotationCoordinator)
         
         // Ensure connection exists and supports the new rotation angle before setting it.
         guard let connection = previewView.videoPreviewLayer.connection,
@@ -343,18 +327,40 @@ public class Camera: NSObject, ObservableObject {
             print("The video rotation angle is either unsupported or the connection is nil.")
             return
         }
-        
         connection.videoRotationAngle = newVideoRotationAngle
         
         // Set up an observer to adjust the video rotation angle when the mode is responsive
-        videoRotationAngleForHorizonLevelPreviewObservation = videoDeviceRotationCoordinator.observe(\.videoRotationAngleForHorizonLevelPreview, options: .new) { _, change in
-            guard let videoRotationAngleForHorizonLevelPreview = change.newValue,
-                  self.angleMode == .responsive,
-                  connection.isVideoRotationAngleSupported(videoRotationAngleForHorizonLevelPreview) else {
-                return
+        switch captureMode.configuration.angleMode {
+            case .fixed:
+                // Remove the observer if it was previously set
+                videoRotationAngleForHorizonLevelPreviewObservation?.invalidate()
+                videoRotationAngleForHorizonLevelPreviewObservation = nil
+            case .responsive:
+                videoRotationAngleForHorizonLevelPreviewObservation = videoDeviceRotationCoordinator.observe(\.videoRotationAngleForHorizonLevelPreview, options: .new) { _, change in
+                    guard let videoRotationAngleForHorizonLevelPreview = change.newValue,
+                          connection.isVideoRotationAngleSupported(videoRotationAngleForHorizonLevelPreview) else {
+                        return
+                    }
+                    connection.videoRotationAngle = videoRotationAngleForHorizonLevelPreview
+                }
             }
-            
-            connection.videoRotationAngle = videoRotationAngleForHorizonLevelPreview
+    }
+    
+    private func getVideoRotationAngle(_ videoDeviceRotationCoordinator: AVCaptureDevice.RotationCoordinator) -> CGFloat {
+        switch captureMode.configuration.angleMode {
+        case .fixed(let orientation):
+            switch orientation {
+            case .portrait:
+                return 90
+            case .portraitUpsideDown:
+                return 270
+            case .landscapeLeft:
+                return 0
+            case .landscapeRight:
+                return 180
+            }
+        case .responsive:
+            return videoDeviceRotationCoordinator.videoRotationAngleForHorizonLevelPreview
         }
     }
 
@@ -841,7 +847,7 @@ extension Camera {
         
         sessionQueue.async {
             if let photoOutputConnection = self.photoOutput.connection(with: .video) {
-                photoOutputConnection.videoRotationAngle = self.videoDeviceRotationCoordinator.videoRotationAngleForHorizonLevelPreview
+                photoOutputConnection.videoRotationAngle = self.getVideoRotationAngle(self.videoDeviceRotationCoordinator)
             }
             var photoSettings: AVCapturePhotoSettings = AVCapturePhotoSettings()
             
@@ -955,7 +961,7 @@ extension Camera {
                 
                 // Update the orientation on the movie file output video connection before recording.
                 let movieFileOutputConnection: AVCaptureConnection? = movieFileOutput.connection(with: .video)
-                movieFileOutputConnection?.videoRotationAngle = self.videoDeviceRotationCoordinator.videoRotationAngleForHorizonLevelPreview
+                movieFileOutputConnection?.videoRotationAngle = self.getVideoRotationAngle(self.videoDeviceRotationCoordinator)
                 
                 let availableVideoCodecTypes: [AVVideoCodecType] = movieFileOutput.availableVideoCodecTypes
                 

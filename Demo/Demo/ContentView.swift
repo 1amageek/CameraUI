@@ -8,12 +8,15 @@
 import SwiftUI
 import CameraUI
 import Photos
+import Vision
 
 struct ContentView: View {
     
-    @StateObject var camera: Camera = Camera(captureMode: .movie(.high))
+    @StateObject var camera: Camera = Camera(captureMode: .movie(.init(sessionPreset: .high, angleMode: .fixed(.portrait))))
     
     @StateObject var snap: Snap = Snap()
+    
+    @StateObject var visionProcesser: VisionProcesser = VisionProcesser()
     
     @GestureState var isDetectingLongPress = false
     
@@ -115,6 +118,56 @@ struct ContentView: View {
                 }
                 .accentColor(.white)
             }.padding()
+        }
+        .onAppear {
+            visionProcesser.configureSession(with: camera.session)
+        }
+    }
+}
+
+class VisionProcesser: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleBufferDelegate {
+    
+    var visionRequests: [VNRequest] = []
+    
+    var detectedDocumentRect: CGRect = .zero
+    
+    var rectangles: [VNRectangleObservation] = []
+    
+    func configureSession(with session: AVCaptureSession) {
+        let videoDataOutput = AVCaptureVideoDataOutput()
+        if let photoOutputConnection = videoDataOutput.connection(with: .video) {
+            photoOutputConnection.videoRotationAngle = 90
+        }
+        videoDataOutput.setSampleBufferDelegate(self, queue: DispatchQueue(label: "VideoDataOutputQueue"))
+        if session.canAddOutput(videoDataOutput) {
+            session.addOutput(videoDataOutput)
+            
+            if let connection = videoDataOutput.connection(with: .video) {
+                if connection.isVideoRotationAngleSupported(90) {
+                    connection.videoRotationAngle = 90
+                }
+            }
+        }
+    }
+    
+    func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
+        guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
+        let inputImage = CIImage(cvPixelBuffer: pixelBuffer)
+        let requestHandler = VNImageRequestHandler(ciImage: inputImage, orientation: .up)
+        let documentDetectionRequest = VNDetectDocumentSegmentationRequest()
+        
+        do {
+            try requestHandler.perform([documentDetectionRequest])
+            guard
+                let observations: [VNRectangleObservation] = documentDetectionRequest.results,
+                let document = observations.filter({ observation in
+                    observation.confidence > 0.8
+                }).first else {
+                return
+            }
+            print("width: \(inputImage.extent.width) height: \(inputImage.extent.height)")
+        } catch let error {
+            print("Error processing image: \(error.localizedDescription)")
         }
     }
 }
