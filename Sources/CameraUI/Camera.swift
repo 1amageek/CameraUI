@@ -29,8 +29,11 @@ public class Camera: NSObject, ObservableObject {
             
             public var sessionPreset: AVCaptureSession.Preset
             
-            public init(sessionPreset: AVCaptureSession.Preset) {
+            public var angleMode: AngleMode
+            
+            public init(sessionPreset: AVCaptureSession.Preset, angleMode: AngleMode = .responsive) {
                 self.sessionPreset = sessionPreset
+                self.angleMode = angleMode
             }
             
             public static var photo: Configuration { Configuration(sessionPreset: .photo) }
@@ -110,10 +113,18 @@ public class Camera: NSObject, ObservableObject {
         }
     }
     
-    public enum AngleMode {
-        case fixed
+    public enum AngleMode: Equatable {
+        case fixed(Orientation)
         case responsive
+        
+        public enum Orientation {
+            case portrait
+            case portraitUpsideDown
+            case landscapeLeft
+            case landscapeRight
+        }
     }
+
     
     public enum LivePhotoCaptureMode {
         case on
@@ -214,7 +225,6 @@ public class Camera: NSObject, ObservableObject {
     
     public convenience init(captureMode: CaptureMode = .photo(.photo),
                             videoDevice: VideoDevice = .back(.builtInWideAngleCamera),
-                            angleMode: AngleMode = .responsive,
                             useDeviceTypes: [AVCaptureDevice.DeviceType] = [
                                 .builtInWideAngleCamera,
                                 .builtInDualCamera,
@@ -223,7 +233,6 @@ public class Camera: NSObject, ObservableObject {
                                 self.init()
                                 self.captureMode = captureMode
                                 self.videoDevice = videoDevice
-                                self.angleMode = angleMode
                                 self.videoDeviceDiscoverySession = AVCaptureDevice.DiscoverySession(deviceTypes: useDeviceTypes,
                                                                                                     mediaType: .video,
                                                                                                     position: .unspecified)
@@ -311,10 +320,18 @@ public class Camera: NSObject, ObservableObject {
         videoDeviceRotationCoordinator = AVCaptureDevice.RotationCoordinator(device: videoDeviceInput.device, previewLayer: previewView.videoPreviewLayer)
 
         let newVideoRotationAngle: CGFloat = {
-            switch angleMode {
-            case .fixed:
-                // Example: Lock to portrait (90 degrees)
-                return .pi/2
+            switch captureMode.configuration.angleMode {
+            case .fixed(let orientation):
+                switch orientation {
+                case .portrait:
+                    return .pi / 2
+                case .portraitUpsideDown:
+                    return -.pi / 2
+                case .landscapeLeft:
+                    return .pi
+                case .landscapeRight:
+                    return 0
+                }
             case .responsive:
                 return videoDeviceRotationCoordinator.videoRotationAngleForHorizonLevelPreview
             }
@@ -623,6 +640,8 @@ public class Camera: NSObject, ObservableObject {
     }
 }
 
+// MARK: - Chage CaptureVideoDevice
+
 extension Camera {
     
     public func change(captureVideoDevice: VideoDevice) {
@@ -701,16 +720,6 @@ extension Camera {
                 self.isCameraChanging = false
             }
         }
-    }
-}
-
-// MARK: - Angle
-
-extension Camera {
-    
-    public func toggleAngleMode() {
-        angleMode = (angleMode == .fixed) ? .responsive : .fixed
-        createDeviceRotationCoordinator() // Refresh rotation settings
     }
 }
 
