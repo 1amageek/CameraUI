@@ -10,9 +10,10 @@ import CameraUI
 import Photos
 import Vision
 
+
 struct ContentView: View {
     
-    @StateObject var camera: Camera = Camera(captureMode: .movie(.init(sessionPreset: .high, angleMode: .fixed(.portrait))))
+    @StateObject var camera: Camera = Camera(captureMode: .photo(.high))
     
     @StateObject var snap: Snap = Snap()
     
@@ -26,8 +27,22 @@ struct ContentView: View {
         TapGesture()
             .onEnded { value in
                 print("TapGesture onEnded", value)
-                camera.capturePhoto { resource in
-                    resource.createAsset()
+//                camera.capturePhoto { resource in
+//                    resource.createAsset()
+//                }
+                let photoOutput = camera.photoOutput
+                camera.sessionQueue.async {
+                    var photoSettings = AVCapturePhotoSettings(format: [kCVPixelBufferPixelFormatTypeKey as String: NSNumber(value: kCVPixelFormatType_32BGRA)])
+                    photoSettings = AVCapturePhotoSettings(format: [AVVideoCodecKey: AVVideoCodecType.jpeg])
+                    photoSettings.previewPhotoFormat = [kCVPixelBufferPixelFormatTypeKey as String: NSNumber(value: kCVPixelFormatType_32BGRA)]
+                    let maxDimensions = camera.videoDeviceInput.device.activeFormat.supportedMaxPhotoDimensions
+                        .max(by: { $0.width * $0.height < $1.width * $1.height })                    
+                    photoSettings.maxPhotoDimensions = maxDimensions!
+                    photoSettings.flashMode = .off
+                    photoSettings.isDepthDataDeliveryEnabled = false
+                    photoSettings.isPortraitEffectsMatteDeliveryEnabled = false
+                    photoSettings.photoQualityPrioritization = .quality
+                    photoOutput.capturePhoto(with: photoSettings, delegate: visionProcesser)
                 }
             }
             .simultaneously(
@@ -66,10 +81,38 @@ struct ContentView: View {
     
     var body: some View {
         ZStack {
+            
             camera.view()
-                .ignoresSafeArea(.all)
-                .background(Color.red)
                 .gesture(focus)
+                .ignoresSafeArea(.all)
+                .overlay {
+                    GeometryReader { geometry in
+                        if let observation = visionProcesser.observations.first {
+                            let size = geometry.frame(in: .local).size
+                            let topLeft = observation.topLeft.scaled(to: size)
+                            let topRight = observation.topRight.scaled(to: size)
+                            let bottomRight = observation.bottomRight.scaled(to: size)
+                            let bottomLeft = observation.bottomLeft.scaled(to: size)
+                            RoundedCornerRectangleShape(
+                                topLeft: topLeft,
+                                topRight: topRight,
+                                bottomRight: bottomRight,
+                                bottomLeft: bottomLeft,
+                                cornerRadius: 20
+                            )
+                            .stroke(Color.white, style: StrokeStyle(lineWidth: 8, lineCap: .round))
+                            .animation(.spring, value: observation)
+                            .id("document")
+                        }
+                    }
+                }
+            
+            if let image = visionProcesser.preview {
+                Image(uiImage: image)
+                    .resizable()
+                    .padding()
+            }
+            
             VStack {
                 Spacer()
                 HStack {
@@ -82,7 +125,7 @@ struct ContentView: View {
                     }) {
                         Group {
                             if case .photo(_) = camera.captureMode {
-                                Image(systemName: "video.fill")                                
+                                Image(systemName: "video.fill")
                             } else {
                                 Image(systemName: "camera.fill")
                             }
@@ -118,57 +161,82 @@ struct ContentView: View {
                 }
                 .accentColor(.white)
             }.padding()
+    
         }
         .onAppear {
             visionProcesser.configureSession(with: camera.session)
         }
     }
+    
+    func convert(pointOfInterest: CGPoint, withinImageSize size: CGSize) -> CGPoint {
+        
+        let imageWidth = size.width
+        let imageHeight = size.height
+        
+        // Begin with input rect.
+        var point = pointOfInterest
+        
+        // Reposition origin.
+        point.x *= imageWidth
+        point.y = (1 - imageHeight) * imageHeight
+                
+        return point
+    }
 }
 
-class VisionProcesser: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleBufferDelegate {
+struct RoundedCornerRectangleShape: Shape {
+    var topLeft: CGPoint
+    var topRight: CGPoint
+    var bottomRight: CGPoint
+    var bottomLeft: CGPoint
+    var cornerRadius: CGFloat
+    var stretch: CGFloat = 8
     
-    var visionRequests: [VNRequest] = []
-    
-    var detectedDocumentRect: CGRect = .zero
-    
-    var rectangles: [VNRectangleObservation] = []
-    
-    func configureSession(with session: AVCaptureSession) {
-        let videoDataOutput = AVCaptureVideoDataOutput()
-        if let photoOutputConnection = videoDataOutput.connection(with: .video) {
-            photoOutputConnection.videoRotationAngle = 90
+    var animatableData: AnimatablePair<AnimatablePair<CGPoint.AnimatableData, CGPoint.AnimatableData>, AnimatablePair<CGPoint.AnimatableData, CGPoint.AnimatableData>> {
+        get {
+            AnimatablePair(
+                AnimatablePair(topLeft.animatableData, topRight.animatableData),
+                AnimatablePair(bottomRight.animatableData, bottomLeft.animatableData)
+            )
         }
-        videoDataOutput.setSampleBufferDelegate(self, queue: DispatchQueue(label: "VideoDataOutputQueue"))
-        if session.canAddOutput(videoDataOutput) {
-            session.addOutput(videoDataOutput)
-            
-            if let connection = videoDataOutput.connection(with: .video) {
-                if connection.isVideoRotationAngleSupported(90) {
-                    connection.videoRotationAngle = 90
-                }
-            }
+        set {
+            topLeft.animatableData = newValue.first.first
+            topRight.animatableData = newValue.first.second
+            bottomRight.animatableData = newValue.second.first
+            bottomLeft.animatableData = newValue.second.second
         }
     }
     
-    func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
-        guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
-        let inputImage = CIImage(cvPixelBuffer: pixelBuffer)
-        let requestHandler = VNImageRequestHandler(ciImage: inputImage, orientation: .up)
-        let documentDetectionRequest = VNDetectDocumentSegmentationRequest()
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
         
-        do {
-            try requestHandler.perform([documentDetectionRequest])
-            guard
-                let observations: [VNRectangleObservation] = documentDetectionRequest.results,
-                let document = observations.filter({ observation in
-                    observation.confidence > 0.8
-                }).first else {
-                return
-            }
-            print("width: \(inputImage.extent.width) height: \(inputImage.extent.height)")
-        } catch let error {
-            print("Error processing image: \(error.localizedDescription)")
-        }
+        // Start at the top-left corner
+        path.move(to: CGPoint(x: topLeft.x - cornerRadius, y: topLeft.y + stretch))
+        path.addArc(center: CGPoint(x: topLeft.x, y: topLeft.y),
+                    radius: cornerRadius, startAngle: .degrees(180), endAngle: .degrees(270), clockwise: false)
+        path.addLine(to: CGPoint(x: topLeft.x + stretch, y: topLeft.y - cornerRadius))
+        
+        path.move(to: CGPoint(x: topRight.x - stretch, y: topRight.y - cornerRadius))
+        path.addArc(center: CGPoint(x: topRight.x, y: topRight.y),
+                    radius: cornerRadius, startAngle: .degrees(270), endAngle: .degrees(0), clockwise: false)
+        path.addLine(to: CGPoint(x: topRight.x + cornerRadius, y: topRight.y + stretch))
+        
+        path.move(to: CGPoint(x: bottomRight.x + cornerRadius, y: bottomRight.y - stretch))
+        path.addArc(center: CGPoint(x: bottomRight.x, y: bottomRight.y),
+                    radius: cornerRadius, startAngle: .degrees(0), endAngle: .degrees(90), clockwise: false)
+        path.addLine(to: CGPoint(x: bottomRight.x - stretch, y: bottomRight.y + cornerRadius))
+        
+        path.move(to: CGPoint(x: bottomLeft.x + stretch, y: bottomLeft.y + cornerRadius))
+        path.addArc(center: CGPoint(x: bottomLeft.x, y: bottomLeft.y),
+                    radius: cornerRadius, startAngle: .degrees(90), endAngle: .degrees(180), clockwise: false)
+        path.addLine(to: CGPoint(x: bottomLeft.x - cornerRadius, y: bottomLeft.y - stretch))
+        return path
+    }
+}
+
+extension CGPoint {
+    func scaled(to size: CGSize) -> CGPoint {
+        return CGPoint(x: self.x * size.width, y: (1 - self.y) * size.height)
     }
 }
 

@@ -157,7 +157,7 @@ public class Camera: NSObject, ObservableObject {
     private var isSessionRunning: Bool = false
     
     // Communicate with the session and other session objects on this queue.
-    private let sessionQueue: DispatchQueue = DispatchQueue(label: "queue.session.CameraUI")
+    public let sessionQueue: DispatchQueue = DispatchQueue(label: "queue.session.CameraUI")
     
     private var setupResult: SessionSetupResult = .success
     
@@ -278,8 +278,9 @@ public class Camera: NSObject, ObservableObject {
          take a long time. Dispatch session setup to the sessionQueue, so
          that the main queue isn't blocked, which keeps the UI responsive.
          */
+        let previewLayer = self.previewView.videoPreviewLayer
         sessionQueue.async {
-            self.configureSession()
+            self.configureSession(previewLayer: previewLayer)
         }
     }
     
@@ -316,13 +317,12 @@ public class Camera: NSObject, ObservableObject {
     
     private var videoRotationAngleForHorizonLevelPreviewObservation: NSKeyValueObservation?
     
-    private func createDeviceRotationCoordinator() {
-        videoDeviceRotationCoordinator = AVCaptureDevice.RotationCoordinator(device: videoDeviceInput.device, previewLayer: previewView.videoPreviewLayer)
+    private func createDeviceRotationCoordinator(videoDeviceInput: AVCaptureDeviceInput, videoPreviewLayer: AVCaptureVideoPreviewLayer) {
 
         let newVideoRotationAngle: CGFloat = getVideoRotationAngle(videoDeviceRotationCoordinator)
         
         // Ensure connection exists and supports the new rotation angle before setting it.
-        guard let connection = previewView.videoPreviewLayer.connection,
+        guard let connection = videoPreviewLayer.connection,
               connection.isVideoRotationAngleSupported(newVideoRotationAngle) else {
             print("The video rotation angle is either unsupported or the connection is nil.")
             return
@@ -367,7 +367,7 @@ public class Camera: NSObject, ObservableObject {
     
     // Call this on the session queue.
     /// - Tag: ConfigureSession
-    private func configureSession() {
+    private func configureSession(previewLayer: AVCaptureVideoPreviewLayer) {
         if setupResult != .success {
             return
         }
@@ -408,9 +408,9 @@ public class Camera: NSObject, ObservableObject {
             
             session.addInput(videoDeviceInput)
             self.videoDeviceInput = videoDeviceInput
-            
+            self.videoDeviceRotationCoordinator = AVCaptureDevice.RotationCoordinator(device: videoDeviceInput.device, previewLayer: previewLayer)
             DispatchQueue.main.async {
-                self.createDeviceRotationCoordinator()
+                self.createDeviceRotationCoordinator(videoDeviceInput: videoDeviceInput, videoPreviewLayer: previewLayer)
             }
         } catch {
             print("Couldn't create video device input: \(error)")
@@ -451,6 +451,12 @@ public class Camera: NSObject, ObservableObject {
             
             if case .photo(let configuration) = captureMode {
                 session.sessionPreset = configuration.sessionPreset
+                if let connection = photoOutput.connection(with: .video) {
+                    let newVideoRotationAngle: CGFloat = getVideoRotationAngle(videoDeviceRotationCoordinator)
+                    if connection.isVideoRotationAngleSupported(newVideoRotationAngle) {
+                        connection.videoRotationAngle = newVideoRotationAngle
+                    }
+                }
             }
             
             let maxDimensions = videoDevice.activeFormat.supportedMaxPhotoDimensions
@@ -652,6 +658,7 @@ extension Camera {
     
     public func change(captureVideoDevice: VideoDevice) {
         self.isCameraChanging = true
+        let videoPreviewLayer = self.previewView.videoPreviewLayer
         sessionQueue.async {
             
             let preferredPosition: AVCaptureDevice.Position = captureVideoDevice.position
@@ -687,7 +694,7 @@ extension Camera {
                         self.session.addInput(videoDeviceInput)
                         self.videoDeviceInput = videoDeviceInput
                         DispatchQueue.main.async {
-                            self.createDeviceRotationCoordinator()
+                            self.createDeviceRotationCoordinator(videoDeviceInput: videoDeviceInput, videoPreviewLayer: videoPreviewLayer)
                         }
                     } else {
                         self.session.addInput(self.videoDeviceInput)
@@ -921,9 +928,9 @@ extension Camera {
                 DispatchQueue.main.async {
                     self.isPhotoProcessing = isProcessing
                 }
-            }) { CapturedPhoto in
+            }) { capturedPhoto in
                 DispatchQueue.main.async {
-                    completion?(CapturedPhoto)
+                    completion?(capturedPhoto)
                 }
             }
             

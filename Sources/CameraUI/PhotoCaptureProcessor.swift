@@ -10,9 +10,9 @@ import AVFoundation
 import Photos
 
 class PhotoCaptureProcessor: NSObject {
-
+    
     lazy var context: CIContext = CIContext()
-
+    
     private(set) var requestedPhotoSettings: AVCapturePhotoSettings
     
     private let willCapturePhotoAnimation: () -> Void
@@ -22,7 +22,7 @@ class PhotoCaptureProcessor: NSObject {
     private let completionHandler: (PhotoCaptureProcessor) -> Void
     
     private let photoProcessingHandler: (Bool) -> Void
-
+    
     private let resourceHandler: (CapturedPhoto) -> Void
     
     private var resource: CapturedPhoto = CapturedPhoto()
@@ -35,7 +35,7 @@ class PhotoCaptureProcessor: NSObject {
          completionHandler: @escaping (PhotoCaptureProcessor) -> Void,
          photoProcessingHandler: @escaping (Bool) -> Void,
          resourceHandler: @escaping (CapturedPhoto) -> Void
-         ) {
+    ) {
         self.requestedPhotoSettings = requestedPhotoSettings
         self.willCapturePhotoAnimation = willCapturePhotoAnimation
         self.livePhotoCaptureHandler = livePhotoCaptureHandler
@@ -103,23 +103,23 @@ extension PhotoCaptureProcessor: AVCapturePhotoCaptureDelegate {
         
         // Switch on the AVSemanticSegmentationMatteType value.
         switch ssmType {
-            case .hair:
-                imageOption = .auxiliarySemanticSegmentationHairMatte
-            case .skin:
-                imageOption = .auxiliarySemanticSegmentationSkinMatte
-            case .teeth:
-                imageOption = .auxiliarySemanticSegmentationTeethMatte
-            default:
-                print("This semantic segmentation type is not supported!")
-                return
+        case .hair:
+            imageOption = .auxiliarySemanticSegmentationHairMatte
+        case .skin:
+            imageOption = .auxiliarySemanticSegmentationSkinMatte
+        case .teeth:
+            imageOption = .auxiliarySemanticSegmentationTeethMatte
+        default:
+            print("This semantic segmentation type is not supported!")
+            return
         }
         
         guard let perceptualColorSpace: CGColorSpace = CGColorSpace(name: CGColorSpace.sRGB) else { return }
         
         // Create a new CIImage from the matte's underlying CVPixelBuffer.
-        let ciImage: CIImage = CIImage( cvImageBuffer: segmentationMatte.mattingImage,
-                                        options: [imageOption: true,
-                                                  .colorSpace: perceptualColorSpace])
+        let ciImage: CIImage = CIImage(cvImageBuffer: segmentationMatte.mattingImage,
+                                       options: [imageOption: true,
+                                                 .colorSpace: perceptualColorSpace])
         
         // Get the HEIF representation of this image.
         guard let imageData: Data = context.heifRepresentation(of: ciImage,
@@ -153,9 +153,9 @@ extension PhotoCaptureProcessor: AVCapturePhotoCaptureDelegate {
                 return
             }
             self.resource.portraitEffectsMatteData = context.heifRepresentation(of: portraitEffectsMatteImage,
-                                                                  format: .RGBA8,
-                                                                  colorSpace: perceptualColorSpace,
-                                                                  options: [.portraitEffectsMatteImage: portraitEffectsMatteImage])
+                                                                                format: .RGBA8,
+                                                                                colorSpace: perceptualColorSpace,
+                                                                                options: [.portraitEffectsMatteImage: portraitEffectsMatteImage])
         } else {
             self.resource.portraitEffectsMatteData = nil
         }
@@ -186,15 +186,15 @@ extension PhotoCaptureProcessor: AVCapturePhotoCaptureDelegate {
             didFinish()
             return
         }
-
+        
         guard let _ = self.resource.photoData else {
             print("No photo data resource")
             didFinish()
             return
         }
-
+        
         self.resource.uniformTypeIdentifier = self.requestedPhotoSettings.processedFileType.map { $0.rawValue }
-
+        
         completionHandler(self)
         resourceHandler(self.resource)
     }
