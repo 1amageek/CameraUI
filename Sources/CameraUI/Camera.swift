@@ -218,7 +218,7 @@ public class Camera: NSObject, ObservableObject {
     
     private var backgroundRecordingID: UIBackgroundTaskIdentifier?
     
-    private var videoDeviceRotationCoordinator: AVCaptureDevice.RotationCoordinator!
+    public var videoDeviceRotationCoordinator: AVCaptureDevice.RotationCoordinator!
     
     override private init() {
         super.init()
@@ -352,7 +352,7 @@ public class Camera: NSObject, ObservableObject {
         }
     }
     
-    private func getVideoRotationAngle(_ videoDeviceRotationCoordinator: AVCaptureDevice.RotationCoordinator) -> CGFloat {
+    public func getVideoRotationAngle(_ videoDeviceRotationCoordinator: AVCaptureDevice.RotationCoordinator) -> CGFloat {
         switch captureMode.configuration.angleMode {
         case .fixed(let orientation):
             switch orientation {
