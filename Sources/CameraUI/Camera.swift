@@ -325,7 +325,7 @@ public class Camera: NSObject, ObservableObject {
     
     private var videoRotationAngleForHorizonLevelPreviewObservation: NSKeyValueObservation?
     
-    private func createDeviceRotationCoordinator(videoDeviceInput: AVCaptureDeviceInput, videoPreviewLayer: AVCaptureVideoPreviewLayer) {
+    private func createDeviceRotationCoordinator(videoPreviewLayer: AVCaptureVideoPreviewLayer) {
         
         let newVideoRotationAngle: CGFloat = getVideoRotationAngle(videoDeviceRotationCoordinator)
         
@@ -350,8 +350,12 @@ public class Camera: NSObject, ObservableObject {
                     return
                 }
                 connection.videoRotationAngle = videoRotationAngleForHorizonLevelPreview
+                if let connection = self.videoDataOutput.connection(with: .video) {
+                    connection.videoRotationAngle = videoRotationAngleForHorizonLevelPreview
+                }
             }
         }
+
     }
     
     public func getVideoRotationAngle(_ videoDeviceRotationCoordinator: AVCaptureDevice.RotationCoordinator) -> CGFloat {
@@ -418,7 +422,7 @@ public class Camera: NSObject, ObservableObject {
             self.videoDeviceInput = videoDeviceInput
             self.videoDeviceRotationCoordinator = AVCaptureDevice.RotationCoordinator(device: videoDeviceInput.device, previewLayer: previewLayer)
             DispatchQueue.main.async {
-                self.createDeviceRotationCoordinator(videoDeviceInput: videoDeviceInput, videoPreviewLayer: previewLayer)
+                self.createDeviceRotationCoordinator(videoPreviewLayer: previewLayer)
             }
         } catch {
             print("Couldn't create video device input: \(error)")
@@ -714,10 +718,13 @@ extension Camera {
                         self.session.addInput(videoDeviceInput)
                         self.videoDeviceInput = videoDeviceInput
                         DispatchQueue.main.async {
-                            self.createDeviceRotationCoordinator(videoDeviceInput: videoDeviceInput, videoPreviewLayer: videoPreviewLayer)
+                            self.createDeviceRotationCoordinator(videoPreviewLayer: videoPreviewLayer)
                         }
                     } else {
                         self.session.addInput(self.videoDeviceInput)
+                    }
+                    if let connection = self.videoDataOutput.connection(with: .video) {
+                        connection.videoRotationAngle = self.getVideoRotationAngle(self.videoDeviceRotationCoordinator)
                     }
                     if let connection = self.movieFileOutput?.connection(with: .video) {
                         if connection.isVideoStabilizationSupported {
@@ -873,8 +880,11 @@ extension Camera {
          */
         
         sessionQueue.async {
-            if let photoOutputConnection = self.photoOutput.connection(with: .video) {
-                photoOutputConnection.videoRotationAngle = self.getVideoRotationAngle(self.videoDeviceRotationCoordinator)
+            if let connection = self.photoOutput.connection(with: .video) {
+                connection.videoRotationAngle = self.getVideoRotationAngle(self.videoDeviceRotationCoordinator)
+            }
+            if let connection = self.videoDataOutput.connection(with: .video) {
+                connection.videoRotationAngle = self.getVideoRotationAngle(self.videoDeviceRotationCoordinator)
             }
             var photoSettings: AVCapturePhotoSettings = AVCapturePhotoSettings()
             
@@ -971,7 +981,9 @@ extension Camera {
         
         sessionQueue.async {
             if !movieFileOutput.isRecording {
-                
+                if let connection = self.videoDataOutput.connection(with: .video) {
+                    connection.videoRotationAngle = self.getVideoRotationAngle(self.videoDeviceRotationCoordinator)
+                }
                 let fileOutputRecordingProcesser: FileOutputRecordingProcesser = FileOutputRecordingProcesser { fileOutputRecordingProcesser in
                     self.sessionQueue.async {
                         self.inProgressFileOutputRecodingDelegates[fileOutputRecordingProcesser.uniqueID] = nil

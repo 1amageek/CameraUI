@@ -164,7 +164,7 @@ struct ContentView: View {
     
         }
         .onAppear {
-            visionProcesser.configureSession(with: camera.session)
+            visionProcesser.configureSession(with: camera)
         }
     }
     

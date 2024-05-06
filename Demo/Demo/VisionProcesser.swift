@@ -22,17 +22,8 @@ public class VisionProcesser: NSObject, ObservableObject, AVCaptureVideoDataOutp
     
     @Published var observations: [VNRectangleObservation] = []
     
-    public func configureSession(with session: AVCaptureSession) {
-        let videoDataOutput = AVCaptureVideoDataOutput()
-        videoDataOutput.setSampleBufferDelegate(self, queue: DispatchQueue(label: "VideoDataOutputQueue"))
-        if session.canAddOutput(videoDataOutput) {
-            session.addOutput(videoDataOutput)
-            if let connection = videoDataOutput.connection(with: .video) {
-                if connection.isVideoRotationAngleSupported(90) {
-                    connection.videoRotationAngle = 90
-                }
-            }
-        }
+    public func configureSession(with camera: Camera) {
+        camera.videoDataOutput.setSampleBufferDelegate(self, queue: DispatchQueue(label: "VideoDataOutputQueue"))
     }
     
     private var lastAnalysisTime: TimeInterval = 0
