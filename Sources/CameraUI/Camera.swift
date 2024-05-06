@@ -124,7 +124,6 @@ public class Camera: NSObject, ObservableObject {
             case landscapeRight
         }
     }
-
     
     public enum LivePhotoCaptureMode {
         case on
@@ -153,6 +152,8 @@ public class Camera: NSObject, ObservableObject {
     }
     
     public let session: AVCaptureSession = AVCaptureSession()
+    
+    private var useAudioDevice: Bool = true
     
     private var isSessionRunning: Bool = false
     
@@ -223,22 +224,27 @@ public class Camera: NSObject, ObservableObject {
         super.init()
     }
     
-    public convenience init(captureMode: CaptureMode = .photo(.photo),
-                            videoDevice: VideoDevice = .back(.builtInWideAngleCamera),
-                            useDeviceTypes: [AVCaptureDevice.DeviceType] = [
-                                .builtInWideAngleCamera,
-                                .builtInDualCamera,
-                                .builtInTrueDepthCamera
-                            ]) {
-                                self.init()
-                                self.captureMode = captureMode
-                                self.videoDevice = videoDevice
-                                self.videoDeviceDiscoverySession = AVCaptureDevice.DiscoverySession(deviceTypes: useDeviceTypes,
-                                                                                                    mediaType: .video,
-                                                                                                    position: .unspecified)
-                                self.previewView.session = session
-                                self.boot()
-                            }
+    public convenience init(
+        captureMode: CaptureMode = .photo(.photo),
+        videoDevice: VideoDevice = .back(.builtInWideAngleCamera),
+        useDeviceTypes: [AVCaptureDevice.DeviceType] = [
+            .builtInWideAngleCamera,
+            .builtInDualCamera,
+            .builtInTrueDepthCamera
+        ],
+        useAudioDevice: Bool = true
+    ) {
+        self.init()
+        self.captureMode = captureMode
+        self.videoDevice = videoDevice
+        self.videoDeviceDiscoverySession = AVCaptureDevice.DiscoverySession(
+            deviceTypes: useDeviceTypes,
+            mediaType: .video,
+            position: .unspecified)
+        self.previewView.session = session
+        self.useAudioDevice = useAudioDevice
+        self.boot()
+    }
     
     private func boot() {
         switch AVCaptureDevice.authorizationStatus(for: .video) {
@@ -318,7 +324,7 @@ public class Camera: NSObject, ObservableObject {
     private var videoRotationAngleForHorizonLevelPreviewObservation: NSKeyValueObservation?
     
     private func createDeviceRotationCoordinator(videoDeviceInput: AVCaptureDeviceInput, videoPreviewLayer: AVCaptureVideoPreviewLayer) {
-
+        
         let newVideoRotationAngle: CGFloat = getVideoRotationAngle(videoDeviceRotationCoordinator)
         
         // Ensure connection exists and supports the new rotation angle before setting it.
@@ -331,19 +337,19 @@ public class Camera: NSObject, ObservableObject {
         
         // Set up an observer to adjust the video rotation angle when the mode is responsive
         switch captureMode.configuration.angleMode {
-            case .fixed:
-                // Remove the observer if it was previously set
-                videoRotationAngleForHorizonLevelPreviewObservation?.invalidate()
-                videoRotationAngleForHorizonLevelPreviewObservation = nil
-            case .responsive:
-                videoRotationAngleForHorizonLevelPreviewObservation = videoDeviceRotationCoordinator.observe(\.videoRotationAngleForHorizonLevelPreview, options: .new) { _, change in
-                    guard let videoRotationAngleForHorizonLevelPreview = change.newValue,
-                          connection.isVideoRotationAngleSupported(videoRotationAngleForHorizonLevelPreview) else {
-                        return
-                    }
-                    connection.videoRotationAngle = videoRotationAngleForHorizonLevelPreview
+        case .fixed:
+            // Remove the observer if it was previously set
+            videoRotationAngleForHorizonLevelPreviewObservation?.invalidate()
+            videoRotationAngleForHorizonLevelPreviewObservation = nil
+        case .responsive:
+            videoRotationAngleForHorizonLevelPreviewObservation = videoDeviceRotationCoordinator.observe(\.videoRotationAngleForHorizonLevelPreview, options: .new) { _, change in
+                guard let videoRotationAngleForHorizonLevelPreview = change.newValue,
+                      connection.isVideoRotationAngleSupported(videoRotationAngleForHorizonLevelPreview) else {
+                    return
                 }
+                connection.videoRotationAngle = videoRotationAngleForHorizonLevelPreview
             }
+        }
     }
     
     private func getVideoRotationAngle(_ videoDeviceRotationCoordinator: AVCaptureDevice.RotationCoordinator) -> CGFloat {
@@ -363,7 +369,7 @@ public class Camera: NSObject, ObservableObject {
             return videoDeviceRotationCoordinator.videoRotationAngleForHorizonLevelPreview
         }
     }
-
+    
     
     // Call this on the session queue.
     /// - Tag: ConfigureSession
@@ -419,17 +425,19 @@ public class Camera: NSObject, ObservableObject {
             return
         }
         
-        // Add an audio input device.
-        let audioDevice = AVCaptureDevice.default(for: .audio)
-        do {
-            let audioDeviceInput = try AVCaptureDeviceInput(device: audioDevice!)
-            if session.canAddInput(audioDeviceInput) {
-                session.addInput(audioDeviceInput)
-            } else {
-                print("Could not add audio device input to the session")
+        if useAudioDevice {
+            // Add an audio input device.
+            let audioDevice = AVCaptureDevice.default(for: .audio)
+            do {
+                let audioDeviceInput = try AVCaptureDeviceInput(device: audioDevice!)
+                if session.canAddInput(audioDeviceInput) {
+                    session.addInput(audioDeviceInput)
+                } else {
+                    print("Could not add audio device input to the session")
+                }
+            } catch {
+                print("Could not create audio device input: \(error)")
             }
-        } catch {
-            print("Could not create audio device input: \(error)")
         }
         
         if session.canAddOutput(photoOutput) {
