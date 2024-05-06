@@ -206,6 +206,8 @@ public class Camera: NSObject, ObservableObject {
     
     public let photoOutput: AVCapturePhotoOutput = AVCapturePhotoOutput()
     
+    public let videoDataOutput: AVCaptureVideoDataOutput = AVCaptureVideoDataOutput()
+    
     private var inProgressPhotoCaptureDelegates: [Int64: PhotoCaptureProcessor] = [:]
     
     private var inProgressFileOutputRecodingDelegates: [String: FileOutputRecordingProcesser] = [:]
@@ -437,6 +439,16 @@ public class Camera: NSObject, ObservableObject {
                 }
             } catch {
                 print("Could not create audio device input: \(error)")
+            }
+        }
+        
+        if session.canAddOutput(videoDataOutput) {
+            session.addOutput(videoDataOutput)
+            if let connection = videoDataOutput.connection(with: .video) {
+                let newVideoRotationAngle: CGFloat = getVideoRotationAngle(videoDeviceRotationCoordinator)
+                if connection.isVideoRotationAngleSupported(newVideoRotationAngle) {
+                    connection.videoRotationAngle = newVideoRotationAngle
+                }
             }
         }
         
